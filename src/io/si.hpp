@@ -9,7 +9,7 @@
 #include "core/clock.hpp"
 #include "core/scheduler.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Mi;
 class Pif;
@@ -50,4 +50,4 @@ class Si {
   Event finish_ev_;
 };
 
-}  // namespace reality
+}  // namespace ultra

@@ -4,7 +4,7 @@ Oct 17, 2026 · @Wilbur
 
 ## Goals and definition of correct
 
-The deliverable is a clean-room C++23 Nintendo 64 emulator whose timing model is verifiable against real hardware at the cycle level, and which is usable as a day-to-day emulator even where it falls short of full speed. Working name: **Reality** (the RCP's own chips are the Reality Signal Processor and Reality Display Processor; rename freely).
+The deliverable is a clean-room C++23 Nintendo 64 emulator whose timing model is verifiable against real hardware at the cycle level, and which is usable as a day-to-day emulator even where it falls short of full speed. Name: **Ultra**.
 
 **Correct means, in priority order:**
 
@@ -119,7 +119,7 @@ The lower arrow is the fence: when the timing thread must observe RDP output, it
 
 **Determinism guarantee, enforced in CI.** Every build runs the trace corpus with 1 worker and with N workers and diffs the bus-transaction logs. Any difference fails the build.
 
-**Configurations.** `reality --threads=1` runs the whole machine on one thread for debugging and as the reference. `--threads=N` uses the worker pool. There is no configuration that trades accuracy for speed; speed comes only from parallelism.
+**Configurations.** `ultra --threads=1` runs the whole machine on one thread for debugging and as the reference. `--threads=N` uses the worker pool. There is no configuration that trades accuracy for speed; speed comes only from parallelism.
 
 ## Module requirements
 
@@ -192,7 +192,7 @@ Two parts of the machine have no complete public timing description. The spec ha
 
 - `IArbiter::request(master, address, size, kind, tick) -> completion_tick`. The arbiter is the only place bus latency is decided. Swapping it changes timing, never results.
 - `IRdpCost::cost(const Command&, const RdpState&) -> {ticks, traffic[]}`. The RDP timing half calls this and nothing else.
-- Both carry a `confidence()` enum (`Measured`, `Derived`, `Guess`) per parameter, surfaced in `reality --timing-report`.
+- Both carry a `confidence()` enum (`Measured`, `Derived`, `Guess`) per parameter, surfaced in `ultra --timing-report`.
 
 **Probe ROMs (`tests/probes/`, built with libdragon, MIT).** Each probe runs a controlled workload, measures with `COUNT` and `DP_CLOCK`, and prints results over the ISViewer/UNFLoader debug channel and to the screen. The same ROM runs in the emulator; the harness diffs the numbers.
 
@@ -216,7 +216,7 @@ Two parts of the machine have no complete public timing description. The spec ha
 **Layout:**
 
 ```
-reality/
+ultra/
   CMakeLists.txt            C++23, CMake 3.28+, Ninja; presets for debug, release, asan, tsan
   CLAUDE.md                 Claude Code's standing instructions (see handoff section)
   docs/
@@ -299,7 +299,7 @@ Start every phase in a fresh session with this doc exported to `docs/SPEC.md`, t
 **`CLAUDE.md` (verbatim, at the repo root):**
 
 ```markdown
-# Reality: cycle-accurate N64 emulator
+# Ultra: cycle-accurate N64 emulator
 
 Read docs/SPEC.md before any work. It is the contract; this file is the working rules.
 
@@ -337,7 +337,7 @@ Read docs/SPEC.md before any work. It is the contract; this file is the working 
 
 *Phase 0:*
 
-> Build Phase 0 of Reality per docs/SPEC.md. Deliver: the CMake project with debug, release, asan and tsan presets; `core/` (scheduler, bus, trace sink, save-state visitor) with an ADR each for the scheduler design and the trace format; `cpu/` as a complete VR4300 interpreter with the five-stage pipeline model, caches and TLB; `io/` with MI, PI (ROM only) and the PIF boot path for all retail CICs; `memory/` with RDRAM and a placeholder arbiter that returns protocol-derived fixed latencies, marked `Guess` in the ledger. Vendor n64-systemtest and the krom CPU ROMs under `tests/roms/` with licenses. Gate: n64-systemtest CPU/COP0/TLB/COP1 reports `Failed: 0` and runs to its exit call; the krom CPU ROMs match their documented output. Write `docs/hardware/cpu.md` as you go. Do not start the RSP.
+> Build Phase 0 of Ultra per docs/SPEC.md. Deliver: the CMake project with debug, release, asan and tsan presets; `core/` (scheduler, bus, trace sink, save-state visitor) with an ADR each for the scheduler design and the trace format; `cpu/` as a complete VR4300 interpreter with the five-stage pipeline model, caches and TLB; `io/` with MI, PI (ROM only) and the PIF boot path for all retail CICs; `memory/` with RDRAM and a placeholder arbiter that returns protocol-derived fixed latencies, marked `Guess` in the ledger. Vendor n64-systemtest and the krom CPU ROMs under `tests/roms/` with licenses. Gate: n64-systemtest CPU/COP0/TLB/COP1 reports `Failed: 0` and runs to its exit call; the krom CPU ROMs match their documented output. Write `docs/hardware/cpu.md` as you go. Do not start the RSP.
 
 *Phase 1:*
 
@@ -357,6 +357,6 @@ Read docs/SPEC.md before any work. It is the contract; this file is the working 
 
 *Audit prompt (after every phase, in a fresh session):*
 
-> You are auditing Phase N of Reality against docs/SPEC.md and docs/adr/. You did not write this code. Clone clean, build all four presets, run every CI gate, and verify the ledger is exact. Then review: every hardware constant has a citation; every fact in docs/hardware/ has a source; no code structurally mirrors another emulator (spot-check against ares and Angrylion for the module in question); the threading rules in CLAUDE.md hold (grep for mutexes and allocations in the timing-thread paths); save states round-trip. Write `docs/audit/phase-N.md` with findings ranked by severity and a yes/no on whether the gate is honestly met. Do not fix anything.
+> You are auditing Phase N of Ultra against docs/SPEC.md and docs/adr/. You did not write this code. Clone clean, build all four presets, run every CI gate, and verify the ledger is exact. Then review: every hardware constant has a citation; every fact in docs/hardware/ has a source; no code structurally mirrors another emulator (spot-check against ares and Angrylion for the module in question); the threading rules in CLAUDE.md hold (grep for mutexes and allocations in the timing-thread paths); save states round-trip. Write `docs/audit/phase-N.md` with findings ranked by severity and a yes/no on whether the gate is honestly met. Do not fix anything.
 
 **What you do between phases:** review and accept each ADR; run the probe ROMs on hardware and commit the results; read each audit; decide whether a `Guess` is acceptable for the next phase or blocks it. Those are the only decisions the spec leaves to a human, and they are the ones that matter.

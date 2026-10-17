@@ -12,7 +12,7 @@
 #include "common/types.hpp"
 #include "core/clock.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -77,4 +77,4 @@ class Scheduler {
   usize registered_ = 0;
 };
 
-}  // namespace reality
+}  // namespace ultra

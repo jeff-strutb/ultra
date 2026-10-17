@@ -5,7 +5,7 @@
 #include "core/savestate.hpp"
 #include "io/pif_boot_rom.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 
@@ -135,4 +135,4 @@ void System::load_state(const std::vector<u8>& data) {
   serialize(s);
 }
 
-}  // namespace reality
+}  // namespace ultra

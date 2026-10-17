@@ -10,7 +10,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::mips {
+namespace ultra::mips {
 
 enum Reg : u32 {
   zero = 0, at, v0, v1, a0, a1, a2, a3, t0, t1, t2, t3, t4, t5, t6, t7,
@@ -190,4 +190,4 @@ class Assembler {
   std::vector<Fixup> fixups_;
 };
 
-}  // namespace reality::mips
+}  // namespace ultra::mips

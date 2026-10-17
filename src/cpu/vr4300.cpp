@@ -6,7 +6,7 @@
 #include "core/scheduler.hpp"
 #include "cpu/timing.hpp"
 
-namespace reality {
+namespace ultra {
 
 using namespace cop0;
 
@@ -831,4 +831,4 @@ void Vr4300::serialize(SaveState& s) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

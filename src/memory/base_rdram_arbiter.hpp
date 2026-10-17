@@ -8,7 +8,7 @@
 
 #include "memory/arbiter.hpp"
 
-namespace reality {
+namespace ultra {
 
 class BaseRdramArbiter final : public IArbiter {
  public:
@@ -32,4 +32,4 @@ class BaseRdramArbiter final : public IArbiter {
   std::array<Bank, 8> banks_{};
 };
 
-}  // namespace reality
+}  // namespace ultra

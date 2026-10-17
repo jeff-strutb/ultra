@@ -29,7 +29,7 @@
 #pragma STDC FENV_ACCESS ON
 #endif
 
-namespace reality {
+namespace ultra {
 
 using namespace cop0;
 using namespace decode;
@@ -639,4 +639,4 @@ void Vr4300::fpu_execute(u32 instr) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

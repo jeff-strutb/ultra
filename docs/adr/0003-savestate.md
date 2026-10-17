@@ -14,7 +14,7 @@ different build must fail loudly instead of loading garbage.
   `void serialize(SaveState&)` and visits its fields in a fixed order. In save mode each visit
   appends bytes; in load mode it overwrites the field from the buffer. Saving and loading
   cannot drift apart because they are the same code.
-- **Format:** header (`"RLTY"` magic as a u32, format version 1), then one section per module.
+- **Format:** header (`"ULTR"` magic as a u32, format version 1), then one section per module.
   A section starts with the FNV-1a hash of its name and a module version; on load both must
   match, otherwise loading throws. Values are raw host-endian bytes of trivially copyable
   fields; pointers cannot be serialized (enforced by a `requires` clause).

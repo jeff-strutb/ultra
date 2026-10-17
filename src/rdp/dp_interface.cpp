@@ -2,7 +2,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 enum class DpReg : u32 { Start = 0x00, End = 0x04, Current = 0x08, Status = 0x0C,
@@ -65,4 +65,4 @@ void DpInterface::serialize(SaveState& s) {
   s.value(clock_base_);
 }
 
-}  // namespace reality
+}  // namespace ultra

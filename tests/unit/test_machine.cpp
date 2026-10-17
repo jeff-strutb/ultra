@@ -5,8 +5,8 @@
 #include "io/cic.hpp"
 #include "machine.hpp"
 
-using namespace reality;
-using reality::test::boot;
+using namespace ultra;
+using ultra::test::boot;
 
 namespace {
 constexpr const char* kRom = "krom/CPUTest/CPU/ADD/CPUADD.N64";
@@ -28,7 +28,7 @@ TEST_CASE("machine: a loaded save state continues exactly like the original") {
   const std::vector<u8> end_a = a->save_state();
 
   std::string err;
-  auto cart = Cartridge::load(reality::test::rom_path(kRom), &err);
+  auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
   REQUIRE(cart);
   System b(SystemConfig{}, std::move(cart));
   b.power_on();
@@ -94,7 +94,7 @@ TEST_CASE("cic: IPL2 checksum and detection of the 6102 IPL3s") {
   // krom ROMs carry Nintendo's 6102 IPL3; n64-systemtest carries libdragon's open IPL3, which
   // is built to produce the same checksum.
   for (const char* rel : {kRom, "n64-systemtest/n64-systemtest-cpu.z64"}) {
-    auto cart = Cartridge::load(reality::test::rom_path(rel), &err);
+    auto cart = Cartridge::load(ultra::test::rom_path(rel), &err);
     REQUIRE(cart);
     const auto rom = cart->rom();
     INFO(rel);

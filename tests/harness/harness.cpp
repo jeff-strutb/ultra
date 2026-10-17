@@ -1,17 +1,17 @@
-// reality_harness: boots ROMs headless and checks them against their oracles.
+// ultra_harness: boots ROMs headless and checks them against their oracles.
 //
-//   reality_harness systemtest ROM [--seconds S]
+//   ultra_harness systemtest ROM [--seconds S]
 //       Runs n64-systemtest until it prints its summary. Passes when it reports
 //       "Base: Failed 0 of N" (the ROM ran to its end and every test passed).
-//   reality_harness screen ROM PNG [--seconds S]
+//   ultra_harness screen ROM PNG [--seconds S]
 //       Runs the ROM and compares the raw framebuffer (VI origin/width/type) with a reference
 //       image of the same size. Passes on an exact match. --dump OUT.ppm writes the capture.
-//   reality_harness kromcount ROM FONT COUNTS TOLERANCE [--seconds S]
+//   ultra_harness kromcount ROM FONT COUNTS TOLERANCE [--seconds S]
 //       krom timing ROMs (CPUTIMINGNTSC, CP1TIMINGNTSC) print a loop count per instruction as
 //       eight hex digits. Reads them back from the framebuffer with the ROM's own 8x8 font and
 //       compares each with the hardware count listed in COUNTS. Passes when every count is
 //       within TOLERANCE percent (the ledger states the tolerance and why).
-//   reality_harness manifest FILE [--rom-dir DIR]
+//   ultra_harness manifest FILE [--rom-dir DIR]
 //       Runs every entry of a manifest and checks the outcome against its expectation
 //       (pass / fail). An unexpected pass fails just like an unexpected failure, so the
 //       manifest (mirrored in docs/timing/ledger.md) must stay exact.
@@ -36,7 +36,7 @@
 #include "core/system.hpp"
 #include "png.hpp"
 
-using namespace reality;
+using namespace ultra;
 
 namespace {
 
@@ -268,6 +268,6 @@ int main(int argc, char** argv) {
       if (std::string(argv[i]) == "--rom-dir") rom_dir = argv[i + 1];
     return run_manifest(argv[2], rom_dir);
   }
-  std::fprintf(stderr, "usage: reality_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | manifest FILE [--rom-dir DIR]\n");
+  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | manifest FILE [--rom-dir DIR]\n");
   return 2;
 }

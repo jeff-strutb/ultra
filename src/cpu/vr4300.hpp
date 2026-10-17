@@ -17,7 +17,7 @@
 #include "core/cpu_pins.hpp"
 #include "cpu/cop0_regs.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 class Scheduler;
@@ -317,4 +317,4 @@ class Vr4300 {
   bool wb_issue_head();
 };
 
-}  // namespace reality
+}  // namespace ultra

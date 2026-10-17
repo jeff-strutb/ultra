@@ -13,7 +13,7 @@
 #include "core/clock.hpp"
 #include "core/trace.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -63,4 +63,4 @@ class IArbiter {
   virtual void serialize(SaveState& s) = 0;
 };
 
-}  // namespace reality
+}  // namespace ultra

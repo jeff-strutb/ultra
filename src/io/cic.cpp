@@ -7,7 +7,7 @@
 #include <bit>
 #include <cstddef>
 
-namespace reality {
+namespace ultra {
 
 namespace {
 
@@ -190,4 +190,4 @@ void cic6105_challenge(std::array<u8, 30>& nibbles) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

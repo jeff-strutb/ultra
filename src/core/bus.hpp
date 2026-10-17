@@ -12,7 +12,7 @@
 #include "core/clock.hpp"
 #include "core/trace.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Scheduler;
 class Mi;
@@ -57,4 +57,4 @@ class Bus {
   BusDevices d_;
 };
 
-}  // namespace reality
+}  // namespace ultra

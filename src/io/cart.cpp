@@ -4,7 +4,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 Cartridge::Cartridge(std::vector<u8> rom) : rom_(std::move(rom)), isv_(kIsvSize, 0) {
   isv_out_.reserve(kIsvOutCapacity);
@@ -89,4 +89,4 @@ void Cartridge::serialize(SaveState& s) {
   s.value(isv_len_hi_);
 }
 
-}  // namespace reality
+}  // namespace ultra

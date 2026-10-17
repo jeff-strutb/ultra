@@ -12,9 +12,9 @@
 #include "core/system.hpp"
 #include "cpu/cop0_regs.hpp"
 
-namespace reality::test {
+namespace ultra::test {
 
-inline std::string rom_path(const std::string& rel) { return std::string(REALITY_TEST_ROMS) + "/" + rel; }
+inline std::string rom_path(const std::string& rel) { return std::string(ULTRA_TEST_ROMS) + "/" + rel; }
 
 inline std::unique_ptr<System> boot(const std::string& rel, double seconds) {
   std::string err;
@@ -63,4 +63,4 @@ struct Machine {
   u64 gpr(mips::Reg r) { return cpu().gpr(r); }
 };
 
-}  // namespace reality::test
+}  // namespace ultra::test

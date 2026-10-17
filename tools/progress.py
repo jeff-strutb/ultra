@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the status block of README.md from the test gate and the timing ledger.
 
-Runs `reality_harness manifest` over tests/roms/manifest.txt, counts the outcomes per kind of
+Runs `ultra_harness manifest` over tests/roms/manifest.txt, counts the outcomes per kind of
 oracle, counts the ledger's parameters by confidence, and rewrites the text between the
 STATUS:BEGIN / STATUS:END markers in README.md. Nothing in that block is typed by hand.
 
@@ -37,7 +37,7 @@ def manifest_kinds(path):
 
 
 def run_gate(build):
-    harness = ROOT / build / "tests" / "reality_harness"
+    harness = ROOT / build / "tests" / "ultra_harness"
     if not harness.exists():
         sys.exit(f"{harness} not found: build the preset first")
     out = subprocess.run(

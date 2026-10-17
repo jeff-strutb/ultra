@@ -4,7 +4,7 @@
 #include <bit>
 #include <cstring>
 
-namespace reality {
+namespace ultra {
 
 TraceSink::~TraceSink() { close(); }
 
@@ -13,7 +13,7 @@ bool TraceSink::open(const std::string& path, usize ring_records) {
   file_ = std::fopen(path.c_str(), "wb");
   if (!file_) return false;
   TraceFileHeader h{};
-  std::memcpy(h.magic, "RLTYTRC", 8);
+  std::memcpy(h.magic, "ULTRTRC", 8);
   h.version = kTraceVersion;
   h.record_size = sizeof(TraceRecord);
   std::fwrite(&h, sizeof h, 1, file_);
@@ -81,4 +81,4 @@ void TraceSink::writer_main() {
   std::fflush(file_);
 }
 
-}  // namespace reality
+}  // namespace ultra

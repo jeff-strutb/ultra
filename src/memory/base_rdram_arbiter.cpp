@@ -5,7 +5,7 @@
 #include "core/savestate.hpp"
 #include "memory/arbiter_params.h"
 
-namespace reality {
+namespace ultra {
 
 namespace ap = arbiter_params;
 
@@ -80,4 +80,4 @@ void BaseRdramArbiter::serialize(SaveState& s) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

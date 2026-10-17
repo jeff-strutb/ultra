@@ -15,7 +15,7 @@
 #include "memory/rdram.hpp"
 #include "memory/ri.hpp"
 
-using namespace reality;
+using namespace ultra;
 
 TEST_CASE("savestate: values round-trip and layout mismatches throw") {
   u32 a = 0x1234'5678;
@@ -54,7 +54,7 @@ TEST_CASE("savestate: values round-trip and layout mismatches throw") {
 }
 
 TEST_CASE("trace: records reach the file in order with the documented header") {
-  const auto path = std::filesystem::temp_directory_path() / "reality-trace-test.bin";
+  const auto path = std::filesystem::temp_directory_path() / "ultra-trace-test.bin";
   constexpr u32 kRecords = 100'000;  // several times the ring, so the writer must keep up
   {
     TraceSink sink;
@@ -73,7 +73,7 @@ TEST_CASE("trace: records reach the file in order with the documented header") {
   REQUIRE(in);
   TraceFileHeader h{};
   in.read(reinterpret_cast<char*>(&h), sizeof h);
-  CHECK(std::string(h.magic, 7) == "RLTYTRC");
+  CHECK(std::string(h.magic, 7) == "ULTRTRC");
   CHECK(h.version == kTraceVersion);
   CHECK(h.record_size == sizeof(TraceRecord));
   u32 n = 0;

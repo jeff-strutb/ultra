@@ -10,7 +10,7 @@
 #include "core/clock.hpp"
 #include "core/scheduler.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Mi;
 class Ri;
@@ -98,4 +98,4 @@ class SpInterface {
   Event dma_ev_;
 };
 
-}  // namespace reality
+}  // namespace ultra

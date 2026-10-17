@@ -1,4 +1,4 @@
-# Reality: cycle-accurate N64 emulator
+# Ultra: cycle-accurate N64 emulator
 
 Read docs/SPEC.md before any work. It is the contract; this file is the working rules.
 

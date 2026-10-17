@@ -3,7 +3,7 @@
 
 #include "core/scheduler.hpp"
 
-using namespace reality;
+using namespace ultra;
 
 TEST_CASE("scheduler dispatches in tick then schedule order") {
   Scheduler s;

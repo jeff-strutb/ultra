@@ -1,6 +1,6 @@
 # Test ROMs
 
-Third-party test ROMs and their reference outputs, run by `reality_harness manifest
+Third-party test ROMs and their reference outputs, run by `ultra_harness manifest
 tests/roms/manifest.txt --rom-dir tests/roms` (the `rom-manifest` ctest). Expected outcomes and
 every expected failure are explained in `docs/timing/ledger.md`.
 

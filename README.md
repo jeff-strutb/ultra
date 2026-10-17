@@ -1,4 +1,4 @@
-# Reality: a cycle-accurate Nintendo 64
+# Ultra: a cycle-accurate Nintendo 64
 
 **Started October 17, 2026.** Phase 0 is complete: the VR4300 CPU, the core (scheduler, bus,
 trace, save states), the boot path through the PIF for every retail CIC, RDRAM and the MI/PI
@@ -101,17 +101,17 @@ Query the tree. Do not trust a number in this file.
 
 ```bash
 ctest --test-dir build/release --output-on-failure            # unit tests and the ROM gate
-build/release/tests/reality_harness manifest tests/roms/manifest.txt --rom-dir tests/roms
-build/release/tests/reality_harness systemtest tests/roms/n64-systemtest/n64-systemtest-cpu.z64
-build/release/tests/reality_harness screen ROM.N64 REFERENCE.png --dump out.ppm
-build/release/src/reality --timing-report ROM                 # arbiter parameters and confidence
-build/release/src/reality --trace run.trc ROM                 # bus-transaction trace
+build/release/tests/ultra_harness manifest tests/roms/manifest.txt --rom-dir tests/roms
+build/release/tests/ultra_harness systemtest tests/roms/n64-systemtest/n64-systemtest-cpu.z64
+build/release/tests/ultra_harness screen ROM.N64 REFERENCE.png --dump out.ppm
+build/release/src/ultra --timing-report ROM                 # arbiter parameters and confidence
+build/release/src/ultra --trace run.trc ROM                 # bus-transaction trace
 build/release/tools/tracediff a.trc b.trc                     # first divergence between traces
 ```
 
 ### How the gate is verified
 
-The gate is `tests/roms/manifest.txt`, run by `reality_harness` (the `rom-manifest` ctest).
+The gate is `tests/roms/manifest.txt`, run by `ultra_harness` (the `rom-manifest` ctest).
 Each entry states its expected outcome, and any other outcome fails the gate, including an
 unexpected pass, so the manifest and the ledger cannot drift apart.
 
@@ -148,7 +148,7 @@ save-state round trips, determinism of two runs, PI DMA and VI field timing.
     src/rsp/         SP interface (DMEM/IMEM, DMA, semaphore); the RSP core is Phase 1
     src/rdp/         DP interface registers; the RDP is Phase 2
     src/common/      fixed-width types, register bit fields, a MIPS assembler for tests and boot
-    src/app/         the `reality` command-line runner
+    src/app/         the `ultra` command-line runner
     tests/unit/      Catch2 tests
     tests/harness/   the ROM gate runner (manifest, systemtest, screen, kromcount)
     tests/roms/      vendored test ROMs, licences, the manifest

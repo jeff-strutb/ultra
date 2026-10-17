@@ -8,7 +8,7 @@
 #include "core/cpu_pins.hpp"
 #include "core/trace.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Ri;
 class SaveState;
@@ -65,4 +65,4 @@ class Mi {
   u32 mask_ = 0;
 };
 
-}  // namespace reality
+}  // namespace ultra

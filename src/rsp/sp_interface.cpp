@@ -7,7 +7,7 @@
 #include "io/mi.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 enum class SpReg : u32 {
@@ -178,4 +178,4 @@ void SpInterface::serialize(SaveState& s) {
   s.value(row_done_);
 }
 
-}  // namespace reality
+}  // namespace ultra

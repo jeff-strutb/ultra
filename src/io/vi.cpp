@@ -4,7 +4,7 @@
 #include "io/mi.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 Vi::Vi(Scheduler& sched, Mi& mi, Ri& ri, VideoStandard std)
     : sched_(sched),
@@ -198,4 +198,4 @@ void Vi::serialize(SaveState& s) {
   s.value(vclk_remainder_);
 }
 
-}  // namespace reality
+}  // namespace ultra

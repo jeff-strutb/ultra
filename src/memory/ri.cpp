@@ -4,7 +4,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // Memory-space accesses at or above 8 MiB set OverRange and are outside bank tracking.
@@ -147,4 +147,4 @@ void Ri::serialize(SaveState& s) {
   s.array(bank_row_);
 }
 
-}  // namespace reality
+}  // namespace ultra

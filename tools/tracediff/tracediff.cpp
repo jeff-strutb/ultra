@@ -15,7 +15,7 @@
 
 #include "core/trace.hpp"
 
-using namespace reality;
+using namespace ultra;
 
 namespace {
 
@@ -52,7 +52,7 @@ bool load(const char* path, std::vector<TraceRecord>& out) {
     return false;
   }
   TraceFileHeader h{};
-  if (std::fread(&h, sizeof h, 1, f) != 1 || std::memcmp(h.magic, "RLTYTRC", 8) != 0 ||
+  if (std::fread(&h, sizeof h, 1, f) != 1 || std::memcmp(h.magic, "ULTRTRC", 8) != 0 ||
       h.version != kTraceVersion || h.record_size != sizeof(TraceRecord)) {
     std::fprintf(stderr, "%s: not a version-%u trace\n", path, kTraceVersion);
     std::fclose(f);

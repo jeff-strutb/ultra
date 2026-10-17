@@ -3,7 +3,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::decode {
+namespace ultra::decode {
 
 using Op = Bits<26, 6>;
 using Rs = Bits<21, 5>;
@@ -33,4 +33,4 @@ constexpr u32 ft(u32 i) noexcept { return Ft::get(i); }
 constexpr u32 fs(u32 i) noexcept { return Fs::get(i); }
 constexpr u32 fd(u32 i) noexcept { return Fd::get(i); }
 
-}  // namespace reality::decode
+}  // namespace ultra::decode

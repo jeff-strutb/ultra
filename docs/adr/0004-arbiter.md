@@ -26,7 +26,7 @@ arrive, with every parameter carrying its confidence.
   row extra, a fixed RI overhead, and refresh occupancy. Protocol-derived constants are
   `Derived`; row miss, dirty extra, RI overhead and refresh are `Guess`
   (`memory/arbiter_params.h`, `docs/timing/ledger.md`).
-- `reality --timing-report` prints the parameter table.
+- `ultra --timing-report` prints the parameter table.
 
 ## Consequences
 

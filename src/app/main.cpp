@@ -1,4 +1,4 @@
-// reality: headless command-line runner. The SDL3 frontend (Phase 4) builds on the same core.
+// ultra: headless command-line runner. The SDL3 frontend (Phase 4) builds on the same core.
 
 #include <chrono>
 #include <cstdio>
@@ -11,13 +11,13 @@
 #include "core/system.hpp"
 #include "cpu/disasm.hpp"
 
-using namespace reality;
+using namespace ultra;
 
 namespace {
 
 void usage() {
   std::puts(
-      "usage: reality [options] ROM\n"
+      "usage: ultra [options] ROM\n"
       "  --seconds S         run S emulated seconds (default 10)\n"
       "  --fields N          run until N VI fields have elapsed\n"
       "  --until TEXT        stop as soon as the ISViewer output contains TEXT\n"
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
   }
   const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   const double emu = static_cast<double>(sys.now()) / static_cast<double>(kRcpClockHz);
-  fmt::print(stderr, "\n[reality] emulated {:.3f}s in {:.3f}s wall ({:.1f}% speed), {} instructions, CIC {}, cpu {}\n",
+  fmt::print(stderr, "\n[ultra] emulated {:.3f}s in {:.3f}s wall ({:.1f}% speed), {} instructions, CIC {}, cpu {}\n",
              emu, wall, wall > 0 ? 100.0 * emu / wall : 0.0, sys.cpu().instructions_retired(),
              cic_info(sys.cic()).name, sys.cpu().frozen() ? "frozen" : "running");
 

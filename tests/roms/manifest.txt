@@ -1,6 +1,6 @@
-# Reality test manifest: every entry's expected outcome. The harness fails on any entry whose
+# Ultra test manifest: every entry's expected outcome. The harness fails on any entry whose
 # outcome differs, including an unexpected pass, so this file and docs/timing/ledger.md stay
-# exact. Paths are relative to tests/roms. Run: reality_harness manifest tests/roms/manifest.txt
+# exact. Paths are relative to tests/roms. Run: ultra_harness manifest tests/roms/manifest.txt
 # --rom-dir tests/roms (ctest does this).
 #
 # id  expect  kind  args...

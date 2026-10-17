@@ -11,7 +11,7 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 enum class CicType : u8 { Cic6101, Cic6102, Cic6103, Cic6105, Cic6106, Cic7101, Cic7102, Cic7103, Cic7105, Cic7106 };
 
@@ -40,4 +40,4 @@ std::optional<CicType> detect_cic(std::span<const u8> rom, bool pal);
 // Specification: docs/hardware/cic-algorithms.md section 2.
 void cic6105_challenge(std::array<u8, 30>& nibbles);
 
-}  // namespace reality
+}  // namespace ultra

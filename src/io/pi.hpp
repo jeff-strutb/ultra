@@ -8,7 +8,7 @@
 #include "core/clock.hpp"
 #include "core/scheduler.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Cartridge;
 class Mi;
@@ -102,4 +102,4 @@ class Pi {
   Event dma_ev_;
 };
 
-}  // namespace reality
+}  // namespace ultra

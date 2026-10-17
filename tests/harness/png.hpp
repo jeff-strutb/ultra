@@ -7,7 +7,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::harness {
+namespace ultra::harness {
 
 struct Image {
   u32 width = 0;
@@ -18,4 +18,4 @@ struct Image {
 // Throws std::runtime_error on unsupported or malformed files.
 Image read_png(const std::string& path);
 
-}  // namespace reality::harness
+}  // namespace ultra::harness

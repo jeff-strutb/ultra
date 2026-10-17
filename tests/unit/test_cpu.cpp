@@ -6,9 +6,9 @@
 #include "cpu/timing.hpp"
 #include "machine.hpp"
 
-using namespace reality;
-using namespace reality::mips;
-using reality::test::Machine;
+using namespace ultra;
+using namespace ultra::mips;
+using ultra::test::Machine;
 
 namespace {
 

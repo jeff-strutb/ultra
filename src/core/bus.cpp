@@ -12,7 +12,7 @@
 #include "rdp/dp_interface.hpp"
 #include "rsp/sp_interface.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // RCP register / SP memory read response: from the SysAD address cycle to the data word on
@@ -169,4 +169,4 @@ Tick Bus::rcp_write(u32 paddr, u32, const u8* data, Tick t) {
   return done;
 }
 
-}  // namespace reality
+}  // namespace ultra

@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace reality {
+namespace ultra {
 
 using u8 = std::uint8_t;
 using u16 = std::uint16_t;
@@ -126,4 +126,4 @@ struct Bits {
 template <unsigned N, std::unsigned_integral T = u32>
 using Bit = Bits<N, 1, T>;
 
-}  // namespace reality
+}  // namespace ultra

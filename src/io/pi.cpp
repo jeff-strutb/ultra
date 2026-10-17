@@ -8,7 +8,7 @@
 #include "io/mi.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // PI internal buffer is 128 bytes; blocks never cross a 2 KiB RDRAM page.
@@ -253,4 +253,4 @@ void Pi::serialize(SaveState& s) {
   s.value(dma_.remaining);
 }
 
-}  // namespace reality
+}  // namespace ultra

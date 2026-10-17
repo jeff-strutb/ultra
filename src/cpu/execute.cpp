@@ -8,7 +8,7 @@
 #include "cpu/timing.hpp"
 #include "cpu/vr4300.hpp"
 
-namespace reality {
+namespace ultra {
 
 using namespace cop0;
 using namespace decode;
@@ -770,4 +770,4 @@ void Vr4300::exec_cache(u32 instr) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

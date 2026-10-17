@@ -10,7 +10,7 @@
 #include "core/scheduler.hpp"
 #include "io/vi.hpp"
 
-namespace reality {
+namespace ultra {
 
 class Mi;
 class Ri;
@@ -59,4 +59,4 @@ class Ai {
   Event fetch_ev_;
 };
 
-}  // namespace reality
+}  // namespace ultra

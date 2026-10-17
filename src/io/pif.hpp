@@ -18,7 +18,7 @@
 #include "io/cic.hpp"
 #include "io/vi.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -70,4 +70,4 @@ class Pif {
   Event timeout_ev_;
 };
 
-}  // namespace reality
+}  // namespace ultra

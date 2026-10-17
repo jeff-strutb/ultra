@@ -10,7 +10,7 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -62,4 +62,4 @@ class Cartridge {
   u16 isv_len_hi_ = 0;
 };
 
-}  // namespace reality
+}  // namespace ultra

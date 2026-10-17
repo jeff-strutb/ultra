@@ -15,7 +15,7 @@
 #include "common/types.hpp"
 #include "core/clock.hpp"
 
-namespace reality {
+namespace ultra {
 
 // Who drove the transaction.
 enum class Master : u8 {
@@ -53,7 +53,7 @@ struct TraceRecord {
 static_assert(sizeof(TraceRecord) == 32);
 
 struct TraceFileHeader {
-  char magic[8];   // "RLTYTRC\0"
+  char magic[8];   // "ULTRTRC\0"
   u32 version;     // kTraceVersion
   u32 record_size; // sizeof(TraceRecord)
 };
@@ -103,4 +103,4 @@ class TraceSink {
   std::thread writer_;
 };
 
-}  // namespace reality
+}  // namespace ultra

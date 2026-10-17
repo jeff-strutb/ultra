@@ -7,7 +7,7 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 // One RCP / SysAD MasterClock cycle. 64 bits covers ~9,300 years at 62.5 MHz.
 using Tick = u64;
@@ -61,4 +61,4 @@ inline constexpr VideoClockRatio kVclkPal{4'965'653, 6'250'000};
 // (2,045,250,000 * 17) / (143 * 5 * 62,500,000) reduced.
 inline constexpr VideoClockRatio kVclkMpal{556'308, 715'000};
 
-}  // namespace reality
+}  // namespace ultra

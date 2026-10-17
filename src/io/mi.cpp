@@ -5,7 +5,7 @@
 #include "core/savestate.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // MI_VERSION as reported by most retail consoles.
@@ -189,4 +189,4 @@ void Mi::serialize(SaveState& s) {
   if (s.loading()) update_line();
 }
 
-}  // namespace reality
+}  // namespace ultra

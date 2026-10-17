@@ -6,8 +6,8 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 std::vector<u32> make_pif_boot_rom();
 
-}  // namespace reality
+}  // namespace ultra

@@ -4,7 +4,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 void Scheduler::add(Event& ev, const char* name, Event::Callback fn, void* ctx) {
   if (registered_ == kMaxEvents) throw std::logic_error("Scheduler: too many events");
@@ -110,4 +110,4 @@ void Scheduler::serialize(SaveState& s) {
   }
 }
 
-}  // namespace reality
+}  // namespace ultra

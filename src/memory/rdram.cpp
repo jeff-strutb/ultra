@@ -6,7 +6,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // DeviceType as read from a retail 2 MiB module: ColumnBits=11, Bn=1 (9-bit bytes),
@@ -261,4 +261,4 @@ void Rdram::serialize(SaveState& s) {
   if (s.loading()) rebuild_map();
 }
 
-}  // namespace reality
+}  // namespace ultra

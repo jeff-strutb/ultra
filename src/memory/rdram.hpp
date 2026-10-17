@@ -13,7 +13,7 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -171,4 +171,4 @@ class Rdram {
   std::array<s8, 64> map_{};
 };
 
-}  // namespace reality
+}  // namespace ultra

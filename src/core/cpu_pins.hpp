@@ -6,7 +6,7 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 struct CpuPins {
   enum : u8 { kRcp = 1u << 0, kCart = 1u << 1, kPreNmi = 1u << 2, kInt3 = 1u << 3, kInt4 = 1u << 4 };
@@ -18,4 +18,4 @@ struct CpuPins {
   }
 };
 
-}  // namespace reality
+}  // namespace ultra

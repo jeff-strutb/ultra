@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace reality::harness {
+namespace ultra::harness {
 
 namespace {
 
@@ -258,4 +258,4 @@ Image read_png(const std::string& path) {
   return img;
 }
 
-}  // namespace reality::harness
+}  // namespace ultra::harness

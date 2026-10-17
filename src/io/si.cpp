@@ -5,7 +5,7 @@
 #include "io/pif.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 enum class SiReg : u32 {
@@ -145,4 +145,4 @@ void Si::serialize(SaveState& s) {
   s.array(buf_);
 }
 
-}  // namespace reality
+}  // namespace ultra

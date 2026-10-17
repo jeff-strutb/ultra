@@ -18,7 +18,7 @@
 
 #include "common/mips_asm.hpp"
 
-namespace reality {
+namespace ultra {
 
 using namespace mips;
 
@@ -488,4 +488,4 @@ std::vector<u32> make_pif_boot_rom() {
   return rom;
 }
 
-}  // namespace reality
+}  // namespace ultra

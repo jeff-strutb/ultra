@@ -11,7 +11,7 @@
 #include "memory/arbiter.hpp"
 #include "memory/rdram.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -106,4 +106,4 @@ class Ri {
   std::array<u32, 8> bank_row_{};
 };
 
-}  // namespace reality
+}  // namespace ultra

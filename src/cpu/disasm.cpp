@@ -4,7 +4,7 @@
 
 #include "cpu/decode.hpp"
 
-namespace reality {
+namespace ultra {
 
 using namespace decode;
 
@@ -232,4 +232,4 @@ std::string_view disassemble(u32 i, u64 pc, char* buf, usize n) {
   return o.put(".word   0x%08x", i);
 }
 
-}  // namespace reality
+}  // namespace ultra

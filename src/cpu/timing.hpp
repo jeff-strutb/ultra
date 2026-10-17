@@ -4,7 +4,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::timing {
+namespace ultra::timing {
 
 // An exception stalls the pipeline 2 PCycles before the abort.
 // Derived: VR4300 manual 4.7 "Pipeline Exceptions".
@@ -64,4 +64,4 @@ inline constexpr u64 kCacheOpDCycles = 1;
 // I-cache CACHE ops stall until complete. Guess (ledger "cache-op-icache"): probe 2.
 inline constexpr u64 kCacheOpICycles = 1;
 
-}  // namespace reality::timing
+}  // namespace ultra::timing

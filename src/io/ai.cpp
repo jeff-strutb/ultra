@@ -4,7 +4,7 @@
 #include "io/mi.hpp"
 #include "memory/ri.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 enum class AiReg : u32 { DramAddr = 0x00, Length = 0x04, Control = 0x08, Status = 0x0C,
@@ -125,4 +125,4 @@ void Ai::serialize(SaveState& s) {
   s.value(samples_);
 }
 
-}  // namespace reality
+}  // namespace ultra

@@ -16,7 +16,7 @@ little-endian host layout (the development hosts are little-endian; the header's
 
 | Header field | Size | Value |
 |---|---|---|
-| `magic` | 8 | `"RLTYTRC\0"` |
+| `magic` | 8 | `"ULTRTRC\0"` |
 | `version` | 4 | 1 (`kTraceVersion`) |
 | `record_size` | 4 | 32 |
 

@@ -5,7 +5,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::arbiter_params {
+namespace ultra::arbiter_params {
 
 // RDRAM clock cycles per RCP tick: RCLK 250 MHz / MClock 62.5 MHz.
 // Derived: n64brew "Clock Timing", X2 table. Also n64brew "RDRAM", Reset Complications
@@ -59,4 +59,4 @@ inline constexpr u64 kRiOverheadTCycles = 8;
 // Guess (ledger "arb-refresh"): probe 6 (VI and refresh coupling) measures it.
 inline constexpr u64 kRefreshTCycles = 52 * 4;
 
-}  // namespace reality::arbiter_params
+}  // namespace ultra::arbiter_params

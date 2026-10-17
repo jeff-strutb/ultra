@@ -26,7 +26,7 @@
 #include "rdp/dp_interface.hpp"
 #include "rsp/sp_interface.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState;
 
@@ -102,4 +102,4 @@ class System {
   Vr4300 cpu_;
 };
 
-}  // namespace reality
+}  // namespace ultra

@@ -4,7 +4,7 @@
 
 #include "common/types.hpp"
 
-namespace reality::cop0 {
+namespace ultra::cop0 {
 
 enum Reg : u32 {
   Index = 0,
@@ -158,4 +158,4 @@ struct IndexReg {
   static constexpr u32 kWriteMask = 0x8000003F;
 };
 
-}  // namespace reality::cop0
+}  // namespace ultra::cop0

@@ -18,13 +18,13 @@
 
 #include "common/types.hpp"
 
-namespace reality {
+namespace ultra {
 
 class SaveState {
  public:
   enum class Mode : u8 { Save, Load };
 
-  static constexpr u32 kMagic = 0x524C5459;  // "RLTY"
+  static constexpr u32 kMagic = 0x554C5452;  // "ULTR"
   static constexpr u32 kFormatVersion = 1;
 
   static SaveState saver() { return SaveState(Mode::Save); }
@@ -99,4 +99,4 @@ class SaveState {
   usize pos_ = 0;
 };
 
-}  // namespace reality
+}  // namespace ultra

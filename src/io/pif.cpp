@@ -4,7 +4,7 @@
 
 #include "core/savestate.hpp"
 
-namespace reality {
+namespace ultra {
 
 namespace {
 // Command byte bits (n64brew "PIF-NUS", RAM-based communication protocol).
@@ -163,4 +163,4 @@ void Pif::serialize(SaveState& s) {
   s.value(checksum_from_cpu_);
 }
 
-}  // namespace reality
+}  // namespace ultra
