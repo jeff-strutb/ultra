@@ -1,0 +1,117 @@
+# Reality test manifest: every entry's expected outcome. The harness fails on any entry whose
+# outcome differs, including an unexpected pass, so this file and docs/timing/ledger.md stay
+# exact. Paths are relative to tests/roms. Run: reality_harness manifest tests/roms/manifest.txt
+# --rom-dir tests/roms (ctest does this).
+#
+# id  expect  kind  args...
+
+# n64-systemtest, Phase 0 scope (RSP and RDP tests removed: n64-systemtest/phase0-cpu-scope.patch).
+n64-systemtest/cpu pass systemtest n64-systemtest/n64-systemtest-cpu.z64 60
+
+# krom CPUTest: framebuffer must equal the reference screenshot exactly.
+krom/CP0/COP0Cause/COP0Cause pass screen krom/CPUTest/CP0/COP0Cause/COP0Cause.N64 krom/CPUTest/CP0/COP0Cause/COP0Cause.png
+krom/CP1/ABS/CP1ABS pass screen krom/CPUTest/CP1/ABS/CP1ABS.N64 krom/CPUTest/CP1/ABS/CP1ABS.png
+krom/CP1/ADD/CP1ADD pass screen krom/CPUTest/CP1/ADD/CP1ADD.N64 krom/CPUTest/CP1/ADD/CP1ADD.png
+krom/CP1/C/EQ/CP1CEQ pass screen krom/CPUTest/CP1/C/EQ/CP1CEQ.N64 krom/CPUTest/CP1/C/EQ/CP1CEQ.png
+krom/CP1/C/F/CP1CF pass screen krom/CPUTest/CP1/C/F/CP1CF.N64 krom/CPUTest/CP1/C/F/CP1CF.png
+krom/CP1/C/FPUCompare/FPUCompare-c.eq.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.eq.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.eq.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.f.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.f.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.f.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.le.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.le.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.le.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.lt.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.lt.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.lt.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.nge.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.nge.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.nge.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ngl.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngl.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngl.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ngle.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngle.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngle.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ngt.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngt.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ngt.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ole.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ole.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ole.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.olt.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.olt.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.olt.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.seq.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.seq.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.seq.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.sf.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.sf.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.sf.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ueq.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ueq.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ueq.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ule.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ule.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ule.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.ult.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ult.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.ult.s.png
+krom/CP1/C/FPUCompare/FPUCompare-c.un.s pass screen krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.un.s.N64 krom/CPUTest/CP1/C/FPUCompare/FPUCompare-c.un.s.png
+krom/CP1/C/LE/CP1CLE pass screen krom/CPUTest/CP1/C/LE/CP1CLE.N64 krom/CPUTest/CP1/C/LE/CP1CLE.png
+krom/CP1/C/LT/CP1CLT pass screen krom/CPUTest/CP1/C/LT/CP1CLT.N64 krom/CPUTest/CP1/C/LT/CP1CLT.png
+krom/CP1/C/NGE/CP1CNGE pass screen krom/CPUTest/CP1/C/NGE/CP1CNGE.N64 krom/CPUTest/CP1/C/NGE/CP1CNGE.png
+krom/CP1/C/NGL/CP1CNGL pass screen krom/CPUTest/CP1/C/NGL/CP1CNGL.N64 krom/CPUTest/CP1/C/NGL/CP1CNGL.png
+krom/CP1/C/NGLE/CP1CNGLE pass screen krom/CPUTest/CP1/C/NGLE/CP1CNGLE.N64 krom/CPUTest/CP1/C/NGLE/CP1CNGLE.png
+krom/CP1/C/NGT/CP1CNGT pass screen krom/CPUTest/CP1/C/NGT/CP1CNGT.N64 krom/CPUTest/CP1/C/NGT/CP1CNGT.png
+krom/CP1/C/OLE/CP1COLE pass screen krom/CPUTest/CP1/C/OLE/CP1COLE.N64 krom/CPUTest/CP1/C/OLE/CP1COLE.png
+krom/CP1/C/OLT/CP1COLT pass screen krom/CPUTest/CP1/C/OLT/CP1COLT.N64 krom/CPUTest/CP1/C/OLT/CP1COLT.png
+krom/CP1/C/SEQ/CP1CSEQ pass screen krom/CPUTest/CP1/C/SEQ/CP1CSEQ.N64 krom/CPUTest/CP1/C/SEQ/CP1CSEQ.png
+krom/CP1/C/SF/CP1CSF pass screen krom/CPUTest/CP1/C/SF/CP1CSF.N64 krom/CPUTest/CP1/C/SF/CP1CSF.png
+krom/CP1/C/UEQ/CP1CUEQ pass screen krom/CPUTest/CP1/C/UEQ/CP1CUEQ.N64 krom/CPUTest/CP1/C/UEQ/CP1CUEQ.png
+krom/CP1/C/ULE/CP1CULE pass screen krom/CPUTest/CP1/C/ULE/CP1CULE.N64 krom/CPUTest/CP1/C/ULE/CP1CULE.png
+krom/CP1/C/ULT/CP1CULT pass screen krom/CPUTest/CP1/C/ULT/CP1CULT.N64 krom/CPUTest/CP1/C/ULT/CP1CULT.png
+krom/CP1/C/UN/CP1CUN pass screen krom/CPUTest/CP1/C/UN/CP1CUN.N64 krom/CPUTest/CP1/C/UN/CP1CUN.png
+krom/CP1/CEIL/CP1CEIL pass screen krom/CPUTest/CP1/CEIL/CP1CEIL.N64 krom/CPUTest/CP1/CEIL/CP1CEIL.png
+krom/CP1/COP1FullMode/COP1FullMode pass screen krom/CPUTest/CP1/COP1FullMode/COP1FullMode.N64 krom/CPUTest/CP1/COP1FullMode/COP1FullMode.png
+krom/CP1/CVT/CP1CVT pass screen krom/CPUTest/CP1/CVT/CP1CVT.N64 krom/CPUTest/CP1/CVT/CP1CVT.png
+krom/CP1/DIV/CP1DIV pass screen krom/CPUTest/CP1/DIV/CP1DIV.N64 krom/CPUTest/CP1/DIV/CP1DIV.png
+krom/CP1/FLOOR/CP1FLOOR pass screen krom/CPUTest/CP1/FLOOR/CP1FLOOR.N64 krom/CPUTest/CP1/FLOOR/CP1FLOOR.png
+krom/CP1/MUL/CP1MUL pass screen krom/CPUTest/CP1/MUL/CP1MUL.N64 krom/CPUTest/CP1/MUL/CP1MUL.png
+krom/CP1/NEG/CP1NEG pass screen krom/CPUTest/CP1/NEG/CP1NEG.N64 krom/CPUTest/CP1/NEG/CP1NEG.png
+krom/CP1/ROUND/CP1ROUND pass screen krom/CPUTest/CP1/ROUND/CP1ROUND.N64 krom/CPUTest/CP1/ROUND/CP1ROUND.png
+krom/CP1/SQRT/CP1SQRT pass screen krom/CPUTest/CP1/SQRT/CP1SQRT.N64 krom/CPUTest/CP1/SQRT/CP1SQRT.png
+krom/CP1/SUB/CP1SUB pass screen krom/CPUTest/CP1/SUB/CP1SUB.N64 krom/CPUTest/CP1/SUB/CP1SUB.png
+krom/CP1/TRUNC/CP1TRUNC pass screen krom/CPUTest/CP1/TRUNC/CP1TRUNC.N64 krom/CPUTest/CP1/TRUNC/CP1TRUNC.png
+krom/CPU/ADD/CPUADD pass screen krom/CPUTest/CPU/ADD/CPUADD.N64 krom/CPUTest/CPU/ADD/CPUADD.png
+krom/CPU/ADDU/CPUADDU pass screen krom/CPUTest/CPU/ADDU/CPUADDU.N64 krom/CPUTest/CPU/ADDU/CPUADDU.png
+krom/CPU/AND/CPUAND pass screen krom/CPUTest/CPU/AND/CPUAND.N64 krom/CPUTest/CPU/AND/CPUAND.png
+krom/CPU/DADD/CPUDADD pass screen krom/CPUTest/CPU/DADD/CPUDADD.N64 krom/CPUTest/CPU/DADD/CPUDADD.png
+krom/CPU/DADDU/CPUDADDU pass screen krom/CPUTest/CPU/DADDU/CPUDADDU.N64 krom/CPUTest/CPU/DADDU/CPUDADDU.png
+krom/CPU/DDIV/CPUDDIV pass screen krom/CPUTest/CPU/DDIV/CPUDDIV.N64 krom/CPUTest/CPU/DDIV/CPUDDIV.png
+krom/CPU/DDIVU/CPUDDIVU pass screen krom/CPUTest/CPU/DDIVU/CPUDDIVU.N64 krom/CPUTest/CPU/DDIVU/CPUDDIVU.png
+krom/CPU/DIV/CPUDIV pass screen krom/CPUTest/CPU/DIV/CPUDIV.N64 krom/CPUTest/CPU/DIV/CPUDIV.png
+krom/CPU/DIVU/CPUDIVU pass screen krom/CPUTest/CPU/DIVU/CPUDIVU.N64 krom/CPUTest/CPU/DIVU/CPUDIVU.png
+krom/CPU/DMULT/CPUDMULT pass screen krom/CPUTest/CPU/DMULT/CPUDMULT.N64 krom/CPUTest/CPU/DMULT/CPUDMULT.png
+krom/CPU/DMULTU/CPUDMULTU pass screen krom/CPUTest/CPU/DMULTU/CPUDMULTU.N64 krom/CPUTest/CPU/DMULTU/CPUDMULTU.png
+krom/CPU/DSUB/CPUDSUB pass screen krom/CPUTest/CPU/DSUB/CPUDSUB.N64 krom/CPUTest/CPU/DSUB/CPUDSUB.png
+krom/CPU/DSUBU/CPUDSUBU pass screen krom/CPUTest/CPU/DSUBU/CPUDSUBU.N64 krom/CPUTest/CPU/DSUBU/CPUDSUBU.png
+krom/CPU/LOADSTORE/LB/CPULB pass screen krom/CPUTest/CPU/LOADSTORE/LB/CPULB.N64 krom/CPUTest/CPU/LOADSTORE/LB/CPULB.png
+krom/CPU/LOADSTORE/LD/CPULD pass screen krom/CPUTest/CPU/LOADSTORE/LD/CPULD.N64 krom/CPUTest/CPU/LOADSTORE/LD/CPULD.png
+krom/CPU/LOADSTORE/LH/CPULH pass screen krom/CPUTest/CPU/LOADSTORE/LH/CPULH.N64 krom/CPUTest/CPU/LOADSTORE/LH/CPULH.png
+krom/CPU/LOADSTORE/LL_LLD_SC_SCD/LL_LLD_SC_SCD pass screen krom/CPUTest/CPU/LOADSTORE/LL_LLD_SC_SCD/LL_LLD_SC_SCD.N64 krom/CPUTest/CPU/LOADSTORE/LL_LLD_SC_SCD/LL_LLD_SC_SCD.png
+krom/CPU/LOADSTORE/LW/CPULW pass screen krom/CPUTest/CPU/LOADSTORE/LW/CPULW.N64 krom/CPUTest/CPU/LOADSTORE/LW/CPULW.png
+krom/CPU/LOADSTORE/SB/CPUSB fail screen krom/CPUTest/CPU/LOADSTORE/SB/CPUSB.N64 krom/CPUTest/CPU/LOADSTORE/SB/CPUSB.png  # ledger krom-reference-sb
+krom/CPU/LOADSTORE/SD/CPUSD pass screen krom/CPUTest/CPU/LOADSTORE/SD/CPUSD.N64 krom/CPUTest/CPU/LOADSTORE/SD/CPUSD.png
+krom/CPU/LOADSTORE/SH/CPUSH fail screen krom/CPUTest/CPU/LOADSTORE/SH/CPUSH.N64 krom/CPUTest/CPU/LOADSTORE/SH/CPUSH.png  # ledger krom-reference-sh
+krom/CPU/LOADSTORE/SW/CPUSW pass screen krom/CPUTest/CPU/LOADSTORE/SW/CPUSW.N64 krom/CPUTest/CPU/LOADSTORE/SW/CPUSW.png
+krom/CPU/MULT/CPUMULT pass screen krom/CPUTest/CPU/MULT/CPUMULT.N64 krom/CPUTest/CPU/MULT/CPUMULT.png
+krom/CPU/MULTU/CPUMULTU pass screen krom/CPUTest/CPU/MULTU/CPUMULTU.N64 krom/CPUTest/CPU/MULTU/CPUMULTU.png
+krom/CPU/NOR/CPUNOR pass screen krom/CPUTest/CPU/NOR/CPUNOR.N64 krom/CPUTest/CPU/NOR/CPUNOR.png
+krom/CPU/OR/CPUOR pass screen krom/CPUTest/CPU/OR/CPUOR.N64 krom/CPUTest/CPU/OR/CPUOR.png
+krom/CPU/SHIFT/DSLL/CPUDSLL pass screen krom/CPUTest/CPU/SHIFT/DSLL/CPUDSLL.N64 krom/CPUTest/CPU/SHIFT/DSLL/CPUDSLL.png
+krom/CPU/SHIFT/DSLL32/CPUDSLL32 pass screen krom/CPUTest/CPU/SHIFT/DSLL32/CPUDSLL32.N64 krom/CPUTest/CPU/SHIFT/DSLL32/CPUDSLL32.png
+krom/CPU/SHIFT/DSLLV/CPUDSLLV pass screen krom/CPUTest/CPU/SHIFT/DSLLV/CPUDSLLV.N64 krom/CPUTest/CPU/SHIFT/DSLLV/CPUDSLLV.png
+krom/CPU/SHIFT/DSRA/CPUDSRA pass screen krom/CPUTest/CPU/SHIFT/DSRA/CPUDSRA.N64 krom/CPUTest/CPU/SHIFT/DSRA/CPUDSRA.png
+krom/CPU/SHIFT/DSRA32/CPUDSRA32 pass screen krom/CPUTest/CPU/SHIFT/DSRA32/CPUDSRA32.N64 krom/CPUTest/CPU/SHIFT/DSRA32/CPUDSRA32.png
+krom/CPU/SHIFT/DSRAV/CPUDSRAV pass screen krom/CPUTest/CPU/SHIFT/DSRAV/CPUDSRAV.N64 krom/CPUTest/CPU/SHIFT/DSRAV/CPUDSRAV.png
+krom/CPU/SHIFT/DSRL/CPUDSRL pass screen krom/CPUTest/CPU/SHIFT/DSRL/CPUDSRL.N64 krom/CPUTest/CPU/SHIFT/DSRL/CPUDSRL.png
+krom/CPU/SHIFT/DSRL32/CPUDSRL32 pass screen krom/CPUTest/CPU/SHIFT/DSRL32/CPUDSRL32.N64 krom/CPUTest/CPU/SHIFT/DSRL32/CPUDSRL32.png
+krom/CPU/SHIFT/DSRLV/CPUDSRLV pass screen krom/CPUTest/CPU/SHIFT/DSRLV/CPUDSRLV.N64 krom/CPUTest/CPU/SHIFT/DSRLV/CPUDSRLV.png
+krom/CPU/SHIFT/SLL/CPUSLL pass screen krom/CPUTest/CPU/SHIFT/SLL/CPUSLL.N64 krom/CPUTest/CPU/SHIFT/SLL/CPUSLL.png
+krom/CPU/SHIFT/SLLV/CPUSLLV pass screen krom/CPUTest/CPU/SHIFT/SLLV/CPUSLLV.N64 krom/CPUTest/CPU/SHIFT/SLLV/CPUSLLV.png
+krom/CPU/SHIFT/SRA/CPUSRA pass screen krom/CPUTest/CPU/SHIFT/SRA/CPUSRA.N64 krom/CPUTest/CPU/SHIFT/SRA/CPUSRA.png
+krom/CPU/SHIFT/SRAV/CPUSRAV pass screen krom/CPUTest/CPU/SHIFT/SRAV/CPUSRAV.N64 krom/CPUTest/CPU/SHIFT/SRAV/CPUSRAV.png
+krom/CPU/SHIFT/SRL/CPUSRL pass screen krom/CPUTest/CPU/SHIFT/SRL/CPUSRL.N64 krom/CPUTest/CPU/SHIFT/SRL/CPUSRL.png
+krom/CPU/SHIFT/SRLV/CPUSRLV pass screen krom/CPUTest/CPU/SHIFT/SRLV/CPUSRLV.N64 krom/CPUTest/CPU/SHIFT/SRLV/CPUSRLV.png
+krom/CPU/SUB/CPUSUB pass screen krom/CPUTest/CPU/SUB/CPUSUB.N64 krom/CPUTest/CPU/SUB/CPUSUB.png
+krom/CPU/SUBU/CPUSUBU pass screen krom/CPUTest/CPU/SUBU/CPUSUBU.N64 krom/CPUTest/CPU/SUBU/CPUSUBU.png
+krom/CPU/XOR/CPUXOR pass screen krom/CPUTest/CPU/XOR/CPUXOR.N64 krom/CPUTest/CPU/XOR/CPUXOR.png
+krom/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM fail screen krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM.N64 krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM.png  # ledger krom-reference-dma-rom-from
+krom/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_2 pass screen krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_2.N64 krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_2.png
+krom/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_4 pass screen krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_4.N64 krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_4.png
+krom/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_6 pass screen krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_6.N64 krom/CPUTest/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_6.png
+
+# COP0Register's references were captured after an EverDrive64 launch (Status 0x241000E0); a
+# console booting through the PIF has Status 0x34000000. Ledger "krom-reference-cop0register".
+krom/CP0/COP0Register fail screen krom/CPUTest/CP0/COP0Register/COP0Register.N64 krom/CPUTest/CP0/COP0Register/COP0Register-before-overflow.png
+
+# krom timing ROMs: per-instruction loop counts against the hardware counts in the ROM source.
+# Within 2% now (ledger "rcp-reg-read", "cpu-timing-residual"); not yet within the hardware
+# noise floor, which the exact entries track.
+krom/CPU/TIMINGNTSC pass kromcount krom/CPUTest/CPU/TIMINGNTSC/CPUTIMINGNTSC.N64 krom/CPUTest/CPU/TIMINGNTSC/FontBlack8x8.bin krom/CPUTest/CPU/TIMINGNTSC/CPUTIMINGNTSC.counts 2.0
+krom/CP1/TIMINGNTSC pass kromcount krom/CPUTest/CP1/TIMINGNTSC/CP1TIMINGNTSC.N64 krom/CPUTest/CP1/TIMINGNTSC/FontBlack8x8.bin krom/CPUTest/CP1/TIMINGNTSC/CP1TIMINGNTSC.counts 2.0
+krom/CPU/TIMINGNTSC-exact fail kromcount krom/CPUTest/CPU/TIMINGNTSC/CPUTIMINGNTSC.N64 krom/CPUTest/CPU/TIMINGNTSC/FontBlack8x8.bin krom/CPUTest/CPU/TIMINGNTSC/CPUTIMINGNTSC.counts 0.01  # ledger cpu-timing-residual
+krom/CP1/TIMINGNTSC-exact fail kromcount krom/CPUTest/CP1/TIMINGNTSC/CP1TIMINGNTSC.N64 krom/CPUTest/CP1/TIMINGNTSC/FontBlack8x8.bin krom/CPUTest/CP1/TIMINGNTSC/CP1TIMINGNTSC.counts 0.01  # ledger cpu-timing-residual

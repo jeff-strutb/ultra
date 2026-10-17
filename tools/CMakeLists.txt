@@ -1,0 +1,2 @@
+add_executable(tracediff tracediff/tracediff.cpp)
+target_link_libraries(tracediff PRIVATE reality_core reality_warnings)

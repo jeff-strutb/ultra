@@ -1,0 +1,14 @@
+/build/
+/third_party/
+/.cache/
+compile_commands.json
+*.swp
+.DS_Store
+# Commercial ROMs never enter the repo; only their hashes do.
+/corpus/
+# krom ROM images embed Nintendo's 6102 IPL3 (ROM bytes 0x40-0xFFF), as does krom's
+# LIB/N64_BOOTCODE.BIN. Neither may be published; tests/roms/README.md says how to obtain them,
+# and tests/roms/krom/ROMS.sha256 pins the expected images.
+/tests/roms/krom/**/*.N64
+/tests/roms/krom/**/*.n64
+/tests/roms/krom/**/N64_BOOTCODE.BIN
