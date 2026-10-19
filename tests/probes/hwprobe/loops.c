@@ -40,7 +40,9 @@ void grp_loops(void* unused) {
     hwp_vi_regs(m, vi_regs + 14 * m);
     hwp_vi_mode(m);
     for (int r = 0; r < 4; ++r) {
-      const uint32_t n = r == HWP_REG_VI_V_CURRENT ? HWP_RAW_SAMPLES_VI : HWP_RAW_SAMPLES_OTHER;
+      // Every run keeps 4096 samples in the full record; FlashRAM keeps 256 of the others.
+      const uint32_t n = HWP_RAW_SAMPLES_VI;
+      const uint32_t nflash = r == HWP_REG_VI_V_CURRENT ? HWP_RAW_SAMPLES_VI : HWP_RAW_SAMPLES_OTHER;
       for (int o = 0; o < HWP_NUM_OPS; ++o) {
         uint32_t counts[2];
         raw_fn* const f = raw[o];
@@ -52,7 +54,7 @@ void grp_loops(void* unused) {
         f(samples, samples + n, ra, counts);
         totals[nt++] = counts[0];
         totals[nt++] = counts[1];
-        rec_series_packed(S_LOOP_RAW_ID(m, r, o), HWP_PACK_DELTAS, n, samples);
+        rec_series_packed_split(S_LOOP_RAW_ID(m, r, o), HWP_PACK_DELTAS, n, nflash, samples);
       }
     }
     if (m != HWP_VI_OFF) {

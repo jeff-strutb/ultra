@@ -33,7 +33,7 @@
 // 0x3MRO, M = VI mode (HWP_VI_*), R = register read (HWP_REG_*), O = op (HWP_OP_*).
 // 1 byte per iteration: Count bits 7:0 after the iteration's SYNC. Delta mod 256 = loop time.
 // Stored nibble-packed (series flag HWP_PACK_DELTAS, docs/timing/hwprobe.md).
-#define S_LOOP_RAW        0x3000 // 1 Count low byte per iteration (4096 for R = 0, 256 otherwise), packed deltas
+#define S_LOOP_RAW        0x3000 // 1 Count low byte per iteration (4096; in FlashRAM 256 for R != 0), packed deltas
 #define S_LOOP_RAW_ID(m, r, o) (0x3000 | ((m) << 8) | ((r) << 4) | (o))
 // 0x40MO: iterations of krom's exact loop body per VI_V_CURRENT value, from the change to 0
 // through HWP_LINE_SAMPLES changes. M = 1 or 2.
@@ -96,6 +96,21 @@
 #define S_RDRAM_CONTEND_STRIDES 0x6101 // 4 the strides
 #define S_VI_HSYNC        0x6200 // 4 per H_SYNC value per stride (0, 2048): 8 Count deltas of 256 uncached loads, VI 240p
 #define S_VI_HSYNC_VALUES 0x6201 // 4 the H_SYNC values
+// ---- CPU functional sweeps (cpu_func.c), full record only ----
+#define S_OPCODE_SWEEP    0xA000 // 4 per encoding (primary, SPECIAL, REGIMM, COP0, COP1 fmt x funct, COP2/3; all register fields 0): word, Cause, EPC - buffer, BadVAddr (~0 = no exception)
+#define S_FPU_BINARY_S    0xA010 // 8 add/sub/mul/div.s x 8 modes (FCSR RM 0..3, then FS set) x 16 x 16 operands: result, (FCSR at the exception << 32) | FCSR after, Cause (~0 = none)
+#define S_FPU_BINARY_D    0xA011 // 8 as S_FPU_BINARY_S for .d
+#define S_FPU_UNARY       0xA012 // 8 from S then D: sqrt abs mov neg round.l trunc.l ceil.l floor.l round.w trunc.w ceil.w floor.w cvt.s cvt.d cvt.w cvt.l; from W then L: cvt.s cvt.d; x 8 modes x 16 operands: as S_FPU_BINARY_S
+#define S_FPU_COMPARE     0xA013 // 8 c.cond (cond 0..15) .s then .d x 16 x 16 operands: $f6 (unchanged), FCSR after (bit 23 = condition), Cause
+#define S_FPU_OPERANDS_S  0xA014 // 4 the 16 single operands
+#define S_FPU_OPERANDS_D  0xA015 // 8 the 16 double operands
+#define S_INT_OPERANDS    0xA016 // 8 the 16 integer operands
+#define S_INT_OPS         0xA020 // 8 SPECIAL sllv srlv srav dsllv dsrlv dsrav mult multu div divu dmult dmultu ddiv ddivu add addu sub subu and or xor nor slt sltu dadd daddu dsub dsubu x 16 rs x 16 rt: rd (0xEEEEEEEE_<Cause> if it trapped), HI, LO
+#define S_INT_SHIFTS      0xA021 // 8 sll srl sra dsll dsrl dsra dsll32 dsrl32 dsra32 x sa 0..31 x 16 operands: as S_INT_OPS
+#define S_UNALIGNED       0xA030 // 8 LWL LWR LDL LDR SWL SWR SDL SDR x offset 0..7: register after, then the 16 bytes from the buffer (bytes 0xA0.. before; register 0x1122334455667788)
+#define S_LLSC            0xA031 // 8 per case (LL+SC, SC after ERET, LL+store+SC, LLD+SCD, LL+ERET+SC): SC result, word after, LLAddr
+#define S_CACHE_TAGS      0xA032 // 4 TagLo after Index_Load_Tag: D line loaded, D dirtied, D invalidated, I line run, I line invalidated; physical address of the D line
+
 // ---- RSP and RDP ----
 #define S_SP_DMA          0x7300 // 4 per direction (to SP, from SP) per length in S_SP_DMA_CONFIG, then IMEM 4 KiB: 8 Count deltas
 #define S_SP_DMA_CONFIG   0x7301 // 4 length register values

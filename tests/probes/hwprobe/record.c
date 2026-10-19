@@ -115,8 +115,7 @@ void rec_series(uint16_t id, uint8_t esize, uint32_t count, const void* data) {
 static uint8_t pack_buf[HWP_RAW_SAMPLES_VI + 64];
 static uint8_t esc_buf[HWP_RAW_SAMPLES_VI];
 
-void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t* data) {
-  if (count == 0 || count > HWP_RAW_SAMPLES_VI) return;
+static uint32_t pack(uint8_t mode, uint32_t count, const uint8_t* data) {
   const uint32_t first_item = mode == HWP_PACK_DELTAS ? 1 : 0;
   uint8_t lo = 0xFF;
   for (uint32_t i = first_item; i < count; ++i) {
@@ -144,17 +143,27 @@ void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t*
   pack_buf[2] = nesc >> 8;
   pack_buf[3] = nesc;
   memcpy(out + nib_bytes, esc_buf, nesc);
-  const uint32_t len = 4 + nib_bytes + nesc;
+  return 4 + nib_bytes + nesc;
+}
+
+// `count` samples go to the full record, the first `flash_count` of them to FlashRAM.
+void rec_series_packed_split(uint16_t id, uint8_t mode, uint32_t count, uint32_t flash_count,
+                             const uint8_t* data) {
+  if (count == 0 || count > HWP_RAW_SAMPLES_VI) return;
+  uint32_t len = pack(mode, count, data);
   sink_series(id, 1, mode, count, pack_buf, len);
+  if (flash_count != count) len = pack(mode, flash_count, data);
   if (!reserve(len)) return;
-  series_header(id, 1, mode, count, pack_buf, len);
+  series_header(id, 1, mode, flash_count, pack_buf, len);
   append(pack_buf, len);
   pad4();
   ++nseries;
 }
 
-// Pages are programmed whatever silicon ID the cart reported: an emulated chip may report its
-// own. Success is decided by reading the record back (rec_finish).
+void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t* data) {
+  rec_series_packed_split(id, mode, count, count, data);
+}
+
 // Large series go to the full record only (sink.c), never to FlashRAM.
 void rec_series_full(uint16_t id, uint8_t esize, uint32_t count, const void* data) {
   sink_series(id, esize, HWP_PACK_NONE, count, data, esize * count);

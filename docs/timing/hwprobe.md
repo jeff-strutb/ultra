@@ -67,6 +67,16 @@ ErrorEPC, BadVAddr, Context, XContext and Status at program entry are still the 
 values, and so are Cause's BD, CE and ExcCode fields: only its IP1:0 bits are writable. Count,
 Compare and WatchLo are not; IPL3 zeroes them.
 
+## Full record
+
+Every series also goes to a full record with no size limit (`sink.c`). On a flashcart with
+an SD card (SC64, EverDrive-64 X7, 64drive), the files are `ultra_hwprobe/stage1.bin` and
+`stage2.bin`. In an emulator with an ISViewer port, the record streams as `HWPX` hex lines
+that `ultra_harness hwprobe-full` collects into the same file. The full record holds what
+FlashRAM cannot: the CPU functional sweeps and 4096 samples for every loop run (about 1.2 MB in
+all). Its header has the FlashRAM layout below, with magic `ULTRAHF1` or `ULTRAHF2`.
+`tools/hwprobe.py` reads either form.
+
 ## Record format (version 1)
 
 All fields are big-endian, as the CPU writes them.
@@ -277,6 +287,30 @@ two sizes. The triangle encoding is unverified: Ultra has no RDP yet.
 The uncached load loop at four strides while idle, while the RSP streams 3 KiB DMAs, and while
 the RDP fills the screen. The same loop with VI_H_SYNC set to four line lengths, since RDRAM
 refresh runs once per line.
+
+### CPU functional [0xA0] (full record only)
+
+Results rather than timing, from instructions built at runtime so that every encoding of a
+class can run:
+
+- **Opcode sweep:** every primary opcode except J/JAL, every SPECIAL function, every REGIMM
+  rt, the COP0 moves (except the ones that write registers) and functions, every COP1 format
+  and function, and the COP2 and COP3 moves, all with register fields 0. Before it runs, all
+  32 TLB entries are set invalid, so that zero-base loads, stores and CACHE ops raise TLB
+  exceptions instead of reaching memory. Recorded: Cause, EPC and BadVAddr per encoding.
+- **FPU:** add, sub, mul and div in S and D, the unary and convert functions (including from W
+  and L), and all 16 compare conditions. Each runs over 16 edge operands (zeros, ±1, the
+  smallest and largest denormals, the smallest normal, ±max, ±Inf, both NaN kinds, 1.5, 3,
+  1/3), in all four rounding modes with flush-to-zero off and on. Recorded: result, FCSR, and
+  any exception.
+- **Integer:** every SPECIAL ALU, variable shift, multiply and divide over 16 x 16 operands,
+  including values that are not sign-extended 32-bit (undefined for 32-bit ops), and the
+  immediate shifts for every sa.
+- **Memory:** LWL/LWR/LDL/LDR/SWL/SWR/SDL/SDR at every offset; LL/SC around stores and ERET;
+  cache tags after loads, stores and invalidations.
+
+Headless, every directly computable FPU result matches IEEE arithmetic. Divisions with a
+denormal result trap with Unimplemented, as the VR4300 does without flush-to-zero.
 
 ### FlashRAM [0x7F] → `flash-op-time`
 

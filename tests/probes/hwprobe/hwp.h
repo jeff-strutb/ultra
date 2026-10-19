@@ -35,6 +35,8 @@ extern hwp_boot_t hwp_boot;
 void rec_begin(int stage, uint64_t silicon_id);
 void rec_series(uint16_t id, uint8_t esize, uint32_t count, const void* data);
 void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t* data);
+void rec_series_packed_split(uint16_t id, uint8_t mode, uint32_t count, uint32_t flash_count,
+                             const uint8_t* data);
 void rec_series_full(uint16_t id, uint8_t esize, uint32_t count, const void* data); // full record only
 void rec_flush(void);             // program every complete page not yet programmed
 
@@ -145,6 +147,7 @@ void grp_rsp(void*);
 void grp_rdp(void*);
 void grp_rdram_contend(void*);
 void grp_vi_hsync(void*);
+void grp_cpu_func(void*);
 
 extern int hwp_stage;
 extern uint32_t hwp_memsize;
