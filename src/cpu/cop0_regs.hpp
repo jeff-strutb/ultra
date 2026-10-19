@@ -68,6 +68,8 @@ struct Cause {
   using ExcCode = Bits<2, 5>;
   using IP = Bits<8, 8>;
   using IPSoft = Bits<8, 2>;  // IP0, IP1 are software writable
+  using IPExt = Bits<10, 5>;  // IP2..IP6: external interrupt pins Int0..Int4
+  using IP7 = Bit<15>;        // timer interrupt (Count == Compare)
   using CE = Bits<28, 2>;
   using BD = Bit<31>;
   static constexpr u32 kWriteMask = IPSoft::mask;
@@ -91,6 +93,10 @@ enum class ExcCode : u32 {
   FPE = 15,
   WATCH = 23,
 };
+
+// Table 5-6: cache algorithm 2 is "cache is not used"; every other value is cached. Used by
+// Config.K0, EntryLo.C and the xkphys CCA field.
+inline constexpr u32 kCacheAlgUncached = 2;
 
 // 5.4.6 Config Register: bits 31, 23..16 (00000110), 14..4 (11001000110) are fixed.
 // EC (30:28) = 111b for a 1:1.5 MasterClock:PClock ratio (mPD30200-100 table).
@@ -116,6 +122,10 @@ struct EntryLo {
   using D = Bit<2, u64>;
   using C = Bits<3, 3, u64>;
   using PFN = Bits<6, 20, u64>;
+  static constexpr unsigned kPfnShift = 12;  // PFN is physical address bits 31:12 (5.4.3)
+  // A TLB entry keeps PFN, C, D, V, G only. Source: n64-systemtest tlb "EntryLo0/1/Hi after
+  // TLBWI/TLBR".
+  static constexpr u64 kTlbMask = PFN::mask | C::mask | D::mask | V::mask | G::mask;
   // Bits 29:0 are writable: G..PFN and also bits 29:26, which manual Figure 5-10 shows as zero
   // but which read back on hardware. Source: n64-systemtest tlb EntryLo0/1Masking(64); ledger
   // "entrylo-write-mask".
@@ -125,7 +135,18 @@ struct EntryHi {
   using ASID = Bits<0, 8, u64>;
   using VPN2 = Bits<13, 27, u64>;
   using R = Bits<62, 2, u64>;
-  static constexpr u64 kWriteMask = 0xC00000FFFFFFE0FFull;
+  static constexpr u64 kVpnMask = R::mask | VPN2::mask;  // the parts taken from a faulting address
+  static constexpr u64 kWriteMask = kVpnMask | ASID::mask;
+};
+static_assert(EntryHi::kWriteMask == 0xC00000FFFFFFE0FFull);
+static_assert(EntryLo::kTlbMask == 0x03FFFFFF);
+
+// Virtual address fields (5.2, Figures 5-2 / 5-3 and 5-7).
+struct VAddr {
+  using VPN2 = Bits<13, 27, u64>;       // virtual page pair number (bits 39:13)
+  using Region = Bits<62, 2, u64>;      // 0 user, 1 supervisor, 2 xkphys, 3 kernel
+  using XkphysCca = Bits<59, 3, u64>;   // cache algorithm of an xkphys address
+  using XkphysHole = Bits<32, 27, u64>; // must be zero in xkphys (else address error)
 };
 
 // 6.3.1 Context, 6.3.9 XContext.
@@ -145,6 +166,11 @@ struct WatchLo {
   using R = Bit<1>;
   using PAddr0 = Bits<3, 29>;
   static constexpr u32 kWriteMask = 0xFFFFFFFB;
+};
+
+// 5.4.7 LLAddr: physical address bits 31:4 of the last LL, in bits 27:0.
+struct LLAddrReg {
+  using FromPAddr = Bits<4, 28>;  // the field of the physical address that LLAddr holds
 };
 
 // 5.4.8 TagLo.

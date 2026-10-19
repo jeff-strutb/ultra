@@ -63,7 +63,8 @@ inline constexpr u64 kDdiv = 69;
 inline constexpr u64 kDdivu = 69;
 
 // FPU instruction pipeline cycles (Table 7-14). Results needed by the next FPU instruction
-// cost one more cycle (DC->EX bypass, 7.5.6). Trivial results finish in 2 cycles.
+// cost one more cycle: there is no EX->EX bypass for them, so the next instruction waits a
+// cycle in EX for the DC->EX bypass (7.5.6, Figure 7-9). Trivial results finish in 2 cycles.
 // Derived: VR4300 manual Table 7-14 and the paragraph preceding it.
 inline constexpr u64 kFpuAddSub = 3;
 inline constexpr u64 kFpuMulS = 5;

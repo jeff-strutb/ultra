@@ -73,12 +73,12 @@ void Vr4300::execute(u32 instr) {
   // the outer jump's target (docs/hardware/cpu.md, Integer quirks).
   auto branch = [&](bool taken) {
     branch_pending_ = true;
-    if (taken) npc_ = pc_ + (simm(instr) << 2);
+    if (taken) npc_ = pc_ + branch_offset(instr);
   };
   auto branch_likely = [&](bool taken) {
     if (taken) {
       branch_pending_ = true;
-      npc_ = pc_ + (simm(instr) << 2);
+      npc_ = pc_ + branch_offset(instr);
     } else {
       // Not taken: the delay slot, already fetched, is nullified.
       pc_ = npc_;
@@ -93,12 +93,12 @@ void Vr4300::execute(u32 instr) {
     case OP_REGIMM: exec_regimm(instr); return;
     case OP_J:  // region from this jump's address + 4: ledger "jump-region-in-delay-slot"
       branch_pending_ = true;
-      npc_ = ((cur_pc_ + 4) & ~u64{0x0FFF'FFFF}) | (u64{target(instr)} << 2);
+      npc_ = jump_target(cur_pc_ + kInstrBytes, instr);
       return;
     case OP_JAL:
       branch_pending_ = true;
       gpr_[31] = pc_ + 4;  // next fetch address + 4 (a JAL in a delay slot links past the outer target)
-      npc_ = ((cur_pc_ + 4) & ~u64{0x0FFF'FFFF}) | (u64{target(instr)} << 2);
+      npc_ = jump_target(cur_pc_ + kInstrBytes, instr);
       return;
     case OP_BEQ: branch(s == t); return;
     case OP_BNE: branch(s != t); return;
@@ -208,7 +208,7 @@ void Vr4300::execute(u32 instr) {
       Translation tr;
       // The access above already succeeded, so this translation cannot fault.
       translate(a, Access::Load, tr);
-      lladdr_ = tr.paddr >> 4;
+      lladdr_ = LLAddrReg::FromPAddr::get(tr.paddr);
       llbit_ = true;
       write_rt(sext32(v));
       cur_load_kind_ = LoadTarget::Gpr;
@@ -222,7 +222,7 @@ void Vr4300::execute(u32 instr) {
       if (!load(a, v)) return;
       Translation tr;
       translate(a, Access::Load, tr);
-      lladdr_ = tr.paddr >> 4;
+      lladdr_ = LLAddrReg::FromPAddr::get(tr.paddr);
       llbit_ = true;
       write_rt(v);
       cur_load_kind_ = LoadTarget::Gpr;
@@ -595,7 +595,7 @@ void Vr4300::exec_regimm(u32 instr) {
     if (link) gpr_[31] = pc_ + 4;
     if (taken) {
       branch_pending_ = true;
-      npc_ = pc_ + (imm_s << 2);  // relative to the next fetch address, as in execute()
+      npc_ = pc_ + branch_offset(instr);  // relative to the next fetch address, as in execute()
     } else if (likely) {
       pc_ = npc_;
       npc_ += 4;
@@ -695,8 +695,8 @@ void Vr4300::exec_cache(u32 instr) {
   if (!cop_usable(0)) return raise(ExcCode::CpU, 0);
   dc_stage();  // CACHE operates in the DC stage (manual 4.6.8)
   const u64 vaddr = gpr_[rs(instr)] + simm(instr);
-  const u32 which = rt(instr) & 3;
-  const u32 func = rt(instr) >> 2;
+  const u32 which = CacheWhich::get(instr);
+  const u32 func = CacheFunc::get(instr);
   // Cache ops on caches other than primary I/D (2, 3) are no-ops on the VR4300.
   if (which > 1) return;
 
@@ -721,13 +721,13 @@ void Vr4300::exec_cache(u32 instr) {
         line.valid = (TagLo::PState::get(tag_lo_) & 2) != 0;
         return;
       case 4:  // Hit_Invalidate
-        if (line.valid && line.ptag == (tr.paddr >> 12)) line.valid = false;
+        if (line.valid && line.ptag == PTag::get(tr.paddr)) line.valid = false;
         return;
       case 5:  // Fill
         icache_fill(line, tr.paddr);
         return;
       case 6:  // Hit_Write_Back
-        if (line.valid && line.ptag == (tr.paddr >> 12)) {
+        if (line.valid && line.ptag == PTag::get(tr.paddr)) {
           const u32 base = tr.paddr & ~(kICacheLineBytes - 1);
           bus_write(Master::CpuInstr, base, 16, line.data.data());
           bus_write(Master::CpuInstr, base + 16, 16, line.data.data() + 16);
@@ -738,9 +738,9 @@ void Vr4300::exec_cache(u32 instr) {
   }
 
   DLine& line = dline(vaddr);
-  const u32 index = static_cast<u32>((vaddr >> 4) & (kDCacheLines - 1));
+  const u32 index = static_cast<u32>((vaddr / kDCacheLineBytes) % kDCacheLines);
   cycles_ += timing::kCacheOpDCycles;
-  const bool hit = line.valid && line.ptag == (tr.paddr >> 12);
+  const bool hit = line.valid && line.ptag == PTag::get(tr.paddr);
   switch (func) {
     case 0:  // Index_Write_Back_Invalidate
       if (line.valid && line.dirty) dcache_writeback(line, index);
@@ -758,7 +758,7 @@ void Vr4300::exec_cache(u32 instr) {
     case 3:  // Create_Dirty_Exclusive
       if (!hit) {
         if (line.valid && line.dirty) dcache_writeback(line, index);
-        line.ptag = tr.paddr >> 12;
+        line.ptag = PTag::get(tr.paddr);
         line.valid = true;
       }
       line.dirty = true;

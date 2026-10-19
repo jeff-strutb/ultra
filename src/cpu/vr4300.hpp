@@ -91,6 +91,27 @@ class Vr4300 {
   // ---- constants -------------------------------------------------------------------------
   // PRId as read on revision 2.2 retail units (n64brew "VR4300", Revision Identifiers).
   static constexpr u32 kPRId = 0x0000'0B22;
+  // Exception vectors (Tables 6-3 / 6-4): reset, soft reset and NMI at kResetVector; other
+  // exceptions at a base chosen by Status.BEV plus an offset.
+  static constexpr u64 kResetVector = 0xFFFF'FFFF'BFC0'0000ull;
+  static constexpr u64 kVectorBaseBev0 = 0xFFFF'FFFF'8000'0000ull;
+  static constexpr u64 kVectorBaseBev1 = 0xFFFF'FFFF'BFC0'0200ull;
+  static constexpr u64 kVectorTlbRefill = 0x000;
+  static constexpr u64 kVectorXtlbRefill = 0x080;
+  static constexpr u64 kVectorOther = 0x180;
+  // Power-on Cause and LLAddr: see the constructor. Guesses: ledger "cop0-cause-poweron",
+  // "cop0-lladdr-poweron".
+  static constexpr u32 kCausePowerOn = 0xB000'007C;
+  static constexpr u32 kLLAddrPowerOn = 0xFFFF'FFFF;
+  // TLB: 32 entries; Random counts within them, and Wired is 6 bits wide (5.4.2, 5.4.4).
+  static constexpr u32 kTlbEntries = 32;
+  static constexpr u32 kWiredMask = 63;
+  // Count increments every other PCycle (6.3.3) and wraps after 2^32 counts.
+  static constexpr u64 kCyclesPerCount = 2;
+  static constexpr u64 kCountPeriod = u64{1} << 32;
+  // Pages are at least 4 KiB, mapped in even/odd pairs (5.4.3, Table 5-7).
+  static constexpr u64 kMinPageMask = 0xFFF;
+  static constexpr u64 kMinPagePairMask = 0x1FFF;
 
  private:
   // ---- caches (VR4300 manual chapter 11) ---------------------------------------------------
@@ -100,6 +121,9 @@ class Vr4300 {
   static constexpr u32 kICacheLineBytes = 32;
   static constexpr u32 kDCacheLines = 512;
   static constexpr u32 kDCacheLineBytes = 16;
+
+  // Both caches tag a line with physical address bits 31:12 (11.2.1, 11.2.2).
+  using PTag = Bits<12, 20>;
 
   struct ILine {
     u32 ptag = 0;  // physical address bits 31:12
@@ -174,8 +198,12 @@ class Vr4300 {
   bool check_watch(u32 paddr, Access acc);
 
   // Cache helpers.
-  DLine& dline(u64 vaddr) noexcept { return dcache_[(vaddr >> 4) & (kDCacheLines - 1)]; }
-  ILine& iline(u64 vaddr) noexcept { return icache_[(vaddr >> 5) & (kICacheLines - 1)]; }
+  DLine& dline(u64 vaddr) noexcept {
+    return dcache_[(vaddr / kDCacheLineBytes) % kDCacheLines];
+  }
+  ILine& iline(u64 vaddr) noexcept {
+    return icache_[(vaddr / kICacheLineBytes) % kICacheLines];
+  }
   bool dcache_fill(DLine& line, u32 paddr);
   void dcache_writeback(DLine& line, u32 index);
   bool icache_fill(ILine& line, u32 paddr);
@@ -208,6 +236,9 @@ class Vr4300 {
   void raise_in(cop0::ExcCode code, u32 ce, Stage stage);
   // Cause.CE for an exception raised by CTC1: from the instruction behind it.
   u32 next_instr_cop();
+  // BadVAddr, Context.BadVPN2 and XContext.BadVPN2/R take a faulting address (6.3.1, 6.3.2,
+  // 6.3.9).
+  void latch_bad_vaddr(u64 vaddr) noexcept;
   void raise_address_error(u64 vaddr, Access acc);
   void raise_tlb(u64 vaddr, Access acc, bool miss, bool modification);
   u64 exception_vector(bool tlb_refill, bool xtlb) const noexcept;
@@ -285,7 +316,7 @@ class Vr4300 {
   // Wired, then MFC0 Random: 1 instruction later reads the old sequence, 2 later reads 31).
   static constexpr u64 kRandomResetDelay = 2;
   u64 badvaddr_ = 0;
-  u64 count_offset_ = 0; // Count = (cycles_ >> 1) + count_offset_ (mod 2^32)
+  u64 count_offset_ = 0;  // Count = cycles_ / kCyclesPerCount + count_offset_ (mod 2^32)
   u64 entry_hi_ = 0;
   u32 compare_ = 0;
   u32 status_ = 0;
@@ -309,7 +340,7 @@ class Vr4300 {
   u32 cop1_latch_ = 0;
   u64 cop2_latch_ = 0;  // COP2 move latch (no COP2 exists on the VR4300)
 
-  std::array<TlbEntry, 32> tlb_{};
+  std::array<TlbEntry, kTlbEntries> tlb_{};
   std::array<ILine, kICacheLines> icache_{};
   std::array<DLine, kDCacheLines> dcache_{};
 

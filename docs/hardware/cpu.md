@@ -18,7 +18,7 @@ than the manual. Values without a primary source are in `docs/timing/ledger.md`.
 |---|---|---|
 | MasterClock (SClock) | 62.5 MHz, from the RCP | [n64brew] "Clock Timing", "SysAD Interface" |
 | PClock | 93.75 MHz = 3/2 MasterClock (Config.EC = 111b, 1:1.5) | [UM] 5.4.6, [n64brew] "Clock Timing" |
-| Count register | increments every 2 PClocks | [UM] 6.3.4; [n64brew] "ROM Header" |
+| Count register | increments every 2 PClocks | [UM] 6.3.3; [n64brew] "ROM Header" |
 
 The model keeps CPU time in PClocks and converts exactly (3 PClocks = 2 ticks).
 

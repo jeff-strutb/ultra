@@ -33,6 +33,20 @@ constexpr u32 ft(u32 i) noexcept { return Ft::get(i); }
 constexpr u32 fs(u32 i) noexcept { return Fs::get(i); }
 constexpr u32 fd(u32 i) noexcept { return Fd::get(i); }
 
+// Branch displacement: the offset shifted left 2 bits and sign-extended, added to the address of
+// the delay slot (16, BEQ). Jump target: the 26-bit index shifted left 2 bits, inside the
+// 256 MiB region of the delay slot (16, J).
+inline constexpr u32 kInstrBytes = 4;
+inline constexpr u64 kJumpRegionMask = 0x0FFF'FFFF;
+constexpr u64 branch_offset(u32 i) noexcept { return simm(i) * kInstrBytes; }
+constexpr u64 jump_target(u64 slot_pc, u32 i) noexcept {
+  return (slot_pc & ~kJumpRegionMask) | u64{target(i)} * kInstrBytes;
+}
+
+// CACHE op field, in rt (16, CACHE): bits 1:0 select the cache, bits 4:2 the operation.
+using CacheWhich = Bits<16, 2>;
+using CacheFunc = Bits<18, 3>;
+
 // COPz instructions (16.2, Table 16-1): opcode 0100zz, z = the coprocessor number.
 using OpGroup = Bits<28, 4>;
 using CopNum = Bits<26, 2>;

@@ -45,7 +45,7 @@ std::string_view disassemble(u32 i, u64 pc, char* buf, usize n) {
   const char* RT = kGpr[rt(i)];
   const char* RD = kGpr[rd(i)];
   const s32 off = static_cast<s16>(imm(i));
-  const u64 btarget = pc + 4 + (static_cast<u64>(static_cast<s64>(off)) << 2);
+  const u64 btarget = pc + kInstrBytes + branch_offset(i);
   const unsigned long long bt = btarget;
   auto mem = [&](const char* m) { return o.put("%-7s %s, %d(%s)", m, RT, off, RS); };
   auto br2 = [&](const char* m) { return o.put("%-7s %s, %s, 0x%llx", m, RS, RT, bt); };
@@ -126,8 +126,8 @@ std::string_view disassemble(u32 i, u64 pc, char* buf, usize n) {
       if (rt(i) >= 8 && rt(i) < 16) return o.put("%-7s %s, %d", m, RS, off);
       return br1(m);
     }
-    case 0x02: return o.put("%-7s 0x%llx", "j", static_cast<unsigned long long>(((pc + 4) & ~u64{0x0FFFFFFF}) | (u64{target(i)} << 2)));
-    case 0x03: return o.put("%-7s 0x%llx", "jal", static_cast<unsigned long long>(((pc + 4) & ~u64{0x0FFFFFFF}) | (u64{target(i)} << 2)));
+    case 0x02: return o.put("%-7s 0x%llx", "j", static_cast<unsigned long long>(jump_target(pc + kInstrBytes, i)));
+    case 0x03: return o.put("%-7s 0x%llx", "jal", static_cast<unsigned long long>(jump_target(pc + kInstrBytes, i)));
     case 0x04: return br2("beq");
     case 0x05: return br2("bne");
     case 0x06: return br1("blez");
