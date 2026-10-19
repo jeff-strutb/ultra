@@ -249,6 +249,34 @@ TEST_CASE("cpu: a branch in a jump's delay slot offsets from the jump target") {
   CHECK(m.gpr(ra) == a.address_of(outer) + 4);
 }
 
+TEST_CASE("cpu: BC1T in a jump's delay slot offsets from the jump target") {
+  // BC1T forms its target like every other conditional branch: the offset is added to the address
+  // of the instruction fetched after it ([UM] BC1T / BEQ, docs/hardware/cpu.md Integer quirks),
+  // which is the outer jump's target here. Each landing instruction sets one bit of t0.
+  Machine m;
+  Assembler a(Machine::kCodeBase);
+  const auto outer = a.new_label(), inner = a.new_label(), end = a.new_label();
+  a.lui(t1, 0x0080);  // FCR31.C
+  a.ctc1(t1, 31);
+  a.move(t0, zero);
+  a.j(outer);
+  a.bc1t(inner);  // delay slot: taken, offset 8 words from the slot after it
+  for (int i = 0; i < 5; ++i) a.nop();
+  a.bind(outer);
+  a.ori(t0, t0, 1);  // the outer target executes as the branch's delay slot
+  a.ori(t0, t0, 2);
+  a.ori(t0, t0, 4);
+  a.bind(inner);  // the branch's nominal target (branch address + 4 + offset)
+  for (u32 bit = 3; bit <= 9; ++bit) a.ori(t0, t0, static_cast<u16>(1u << bit));
+  a.bind(end);
+  a.b(end);
+  a.nop();
+  m.load(a.finish());
+  REQUIRE(m.run_to(a.address_of(end)));
+  // Offset = inner - (branch + 4) = 8 words; from outer that lands on the bit-8 ORI.
+  CHECK(m.gpr(t0) == (1u | 256u | 512u));
+}
+
 TEST_CASE("cpu: a Wired write resets Random two instructions later") {
   // n64-systemtest RandomDecrement / RandomReadEarly: MFC0 Random right after MTC0 Wired reads
   // the old sequence, one instruction later reads 31, and it decrements once per instruction.

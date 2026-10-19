@@ -152,6 +152,7 @@ class Assembler {
   void bgez(Reg rs, Label l) { branch(0x01, rs, static_cast<Reg>(0x01), l); }
   void bgezal(Reg rs, Label l) { branch(0x01, rs, static_cast<Reg>(0x11), l); }
   void b(Label l) { beq(zero, zero, l); }
+  void bc1t(Label l) { branch(0x11, static_cast<Reg>(0x08), static_cast<Reg>(0x01), l); }
   void j(Label l) { fixups_.push_back({static_cast<u32>(code_.size()), l, true}); word(0x02u << 26); }
   void jal(Label l) { fixups_.push_back({static_cast<u32>(code_.size()), l, true}); word(0x03u << 26); }
 

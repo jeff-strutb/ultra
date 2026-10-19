@@ -315,8 +315,10 @@ void Vr4300::fpu_execute(u32 instr) {
       const bool likely = (rt(instr) & 2) != 0;
       const bool taken = c == want;
       if (taken) {
+        // Offset from the next fetch address (pc_), as for the integer branches: the outer
+        // target when BC1 is in a jump's delay slot (docs/hardware/cpu.md, Integer quirks).
         branch_pending_ = true;
-        npc_ = cur_pc_ + 4 + (simm(instr) << 2);
+        npc_ = pc_ + (simm(instr) << 2);
       } else if (likely) {
         pc_ = npc_;
         npc_ += 4;
