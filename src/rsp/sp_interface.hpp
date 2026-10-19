@@ -95,7 +95,7 @@ class SpInterface {
   bool full_ = false;
   u32 rows_left_ = 0;
   u32 row_done_ = 0;
-  Event dma_ev_;
+  Event dma_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

@@ -86,7 +86,7 @@ class Vi {
   Scheduler& sched_;
   Mi& mi_;
   Ri& ri_;
-  VideoClockRatio clk_;
+  VideoClockRatio clk_;  // not state: fixed by the TV standard (identity section)
 
   u32 ctrl_ = 0;
   u32 origin_ = 0;
@@ -109,7 +109,7 @@ class Vi {
   u32 field_ = 0;
   u64 fields_ = 0;
   u64 vclk_remainder_ = 0;  // fractional VCLK->tick conversion carry (exact rational)
-  Event line_ev_;
+  Event line_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

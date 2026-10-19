@@ -454,3 +454,18 @@ proven it.
   - `cop0-cause-poweron`: now names the VIIntrDisabled reference showing Cause = 0.
   - `arb-*`: seven rows cover the nine Derived arbiter constants, and the source comments name
     them.
+- **2026-10-19, F10.** ADR 0003 now states what each check proves:
+  - `tools/check_serialize.py` (ctest `serialize-coverage`) is the guard against missing
+    visits. Every data member of a serialized class must be visited or marked
+    `// not state: <reason>`. The members so marked are CPU per-step scratch, host debug aids,
+    Events (saved by the Scheduler), wiring, construction inputs checked by the identity
+    section, the derived RDRAM map, and ISViewer's host-side output (the Low item: it is
+    host-side, so it stays unsaved).
+  - The round-trip test now uses the auditor's method on the tracked ROM. It has three save
+    points: the PIF boot, an in-flight PI DMA, and program code. It compares B's bus trace
+    with A's after the save, and the final states.
+
+  Mutations showed the split:
+  - Dropping PI `dma_.remaining` fails the round-trip test.
+  - Dropping CPU `prev_dc_stall_` passes the round-trip test, and also a 600-reload variant
+    (tried, not kept). Only the source check catches it.

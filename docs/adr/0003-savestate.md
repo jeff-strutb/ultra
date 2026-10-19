@@ -37,9 +37,20 @@ different build must fail loudly instead of loading garbage.
 
 ## Consequences
 
-- Any field added to a module without a matching visit is caught by the round-trip test
-  (`tests/unit/test_machine.cpp`: save at 0.3 s, run to 0.6 s; load into a fresh machine, run to
-  0.6 s; the two final states must be byte-identical).
+- A field added to a module without a matching visit is caught by `tools/check_serialize.py`
+  (ctest `serialize-coverage`). Every data member of a class with a serializer must be named in
+  its `serialize()` or marked `// not state: <reason>`; references are wiring and exempt. The
+  check works on names. It does not check the fields of a member's own struct type, or that a
+  visit restores the value correctly.
+- That a state restores correctly is checked by behaviour
+  (`tests/unit/test_machine.cpp`, "a loaded save state continues exactly like the original"):
+  - save points in the PIF boot ROM, during an in-flight PI DMA, and in the ROM's own code;
+  - from each, the original and a fresh machine loaded from the state run 0.1 s;
+  - B's bus trace must equal A's after the save point, and the final states must be identical.
+
+  This catches only what shows in bus traffic or saved state within those windows. A field
+  that matters for one instruction after it is set, such as the CPU's `prev_dc_stall_`, is
+  missed unless a save point lands inside that span. That is why the source check exists.
 - Bumping a module's section version is required when its layout changes; old states then fail
   with the section name in the error.
 - A load costs one extra save (RDRAM included) for the rollback copy.

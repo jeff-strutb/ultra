@@ -268,9 +268,6 @@ class Vr4300 {
   u64 npc_ = 0;   // address of the instruction after it
   bool in_delay_slot_ = false;   // instruction at pc_ is in a branch delay slot
   bool branch_pending_ = false;  // set by a branch/jump executing now
-  u64 cur_pc_ = 0;               // address of the instruction executing now
-  bool cur_in_delay_ = false;
-  bool exception_ = false;       // the current instruction raised an exception
   bool llbit_ = false;
 
   // COP0
@@ -322,10 +319,7 @@ class Vr4300 {
   bool frozen_ = false;
   LoadTarget pending_load_kind_ = LoadTarget::None;  // load executed by the previous instr
   u32 pending_load_reg_ = 0;
-  LoadTarget cur_load_kind_ = LoadTarget::None;
-  u32 cur_load_reg_ = 0;
   bool prev_dcache_store_ = false;  // previous instruction stored into the D-cache
-  bool cur_dcache_store_ = false;
   // Pipeline stage bookkeeping (ADR 0005). The latch holds the instruction fetched in RF while
   // the previous one was in EX; `ok` false means that fetch faulted, and the instruction's own
   // step fetches again and raises the fault in program order.
@@ -336,15 +330,8 @@ class Vr4300 {
     bool ok = false;
   };
   FetchLatch fetch_latch_{};
-  u64 next_fetch_vaddr_ = 0;     // the instruction behind the executing one, in fetch order
-  bool rf_fetch_done_ = true;    // this step issued (or an EX exception cancelled) the RF fetch
-  bool dc_started_ = false;      // this step reached its DC stage
-  CpuCycle run_cycle_ = 0;       // end of the executing instruction's run (EX) cycle
-  CpuCycle dc_begin_ = 0;        // start of its DC stage
   CpuCycle prev_dc_stall_ = 0;   // DC stall cycles of the previous instruction
   bool prev_ended_in_stall_ = false;  // the PCycle before this step boundary was a stall
-  bool load_use_ = false;        // the executing instruction waits for the previous load (LDI)
-  bool kill_slot_ = false;       // the executing instruction kills its fetched delay slot
   // Instruction micro-TLB: 4 KiB virtual pages (vaddr >> 12), most recently used first.
   struct ItlbEntry {
     u64 vpage = 0;
@@ -352,7 +339,6 @@ class Vr4300 {
   };
   std::array<ItlbEntry, timing::kItlbEntries> itlb_{};
   s32 fpu_result_reg_ = -1;         // FPR written by the previous FPU computational op
-  s32 cur_fpu_result_reg_ = -1;
   // Write buffer (VR4300 manual 4.9): up to four pending SysAD writes. Each is presented to
   // the bus once the bus is free and the CPU has reached its issue time, so devices observe
   // the write at its true bus time.
@@ -368,6 +354,24 @@ class Vr4300 {
   u32 wb_head_ = 0;
   std::array<PendingWrite, 4> wb_{};
 
+  // not state: scratch of the executing instruction. step() sets each field before reading it,
+  // and save states are taken between steps.
+  u64 cur_pc_ = 0;               // address of the instruction executing now
+  bool cur_in_delay_ = false;
+  bool exception_ = false;       // the current instruction raised an exception
+  LoadTarget cur_load_kind_ = LoadTarget::None;
+  u32 cur_load_reg_ = 0;
+  bool cur_dcache_store_ = false;
+  s32 cur_fpu_result_reg_ = -1;
+  u64 next_fetch_vaddr_ = 0;     // the instruction behind the executing one, in fetch order
+  bool rf_fetch_done_ = true;    // this step issued (or an EX exception cancelled) the RF fetch
+  bool dc_started_ = false;      // this step reached its DC stage
+  CpuCycle run_cycle_ = 0;       // end of the executing instruction's run (EX) cycle
+  CpuCycle dc_begin_ = 0;        // start of its DC stage
+  bool load_use_ = false;        // the executing instruction waits for the previous load (LDI)
+  bool kill_slot_ = false;       // the executing instruction kills its fetched delay slot
+
+  // not state: host-side debugging aids.
   static constexpr u32 kHistory = 256;
   bool history_on_ = false;
   bool break_on_exception_ = false;

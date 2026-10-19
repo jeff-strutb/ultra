@@ -22,3 +22,8 @@ set_tests_properties(rom-manifest PROPERTIES TIMEOUT 1200 LABELS rom)
 # Every expected failure is explained in the ledger, and every ledger explanation is still needed.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME ledger-exact COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/check_ledger.py)
+
+# Every data member of a serialized module is visited by its serializer or marked not state
+# (ADR 0003).
+add_test(NAME serialize-coverage
+         COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/check_serialize.py)

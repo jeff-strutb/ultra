@@ -168,6 +168,7 @@ class Rdram {
   std::unique_ptr<u8[]> data_;
   std::unique_ptr<u8[]> ebits_;
   // Map of 1 MiB channel regions (0..63) to device index, -1 = none.
+  // not state: derived from the devices' registers; rebuilt on load.
   std::array<s8, 64> map_{};
 };
 

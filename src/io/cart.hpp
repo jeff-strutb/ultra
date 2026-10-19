@@ -54,12 +54,14 @@ class Cartridge {
  private:
   explicit Cartridge(std::vector<u8> rom);
 
-  std::vector<u8> rom_;
-  bool isviewer_enabled_ = true;
+  std::vector<u8> rom_;  // not state: input; the identity section checks its hash
   std::vector<u8> isv_;
+  u16 isv_len_hi_ = 0;
+
+  // not state: host-side ISViewer setting and the text printed so far, collected for the host.
+  bool isviewer_enabled_ = true;
   std::string isv_out_;
   u64 isv_dropped_ = 0;
-  u16 isv_len_hi_ = 0;
 };
 
 }  // namespace ultra

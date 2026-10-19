@@ -78,7 +78,7 @@ class Pi {
   Scheduler& sched_;
   Mi& mi_;
   Ri& ri_;
-  Cartridge* cart_;
+  Cartridge* cart_;  // not state: wiring
 
   u32 dram_addr_ = 0;
   u32 cart_addr_ = 0;
@@ -99,7 +99,7 @@ class Pi {
     u32 block = 0;
     u32 remaining = 0;
   } dma_;
-  Event dma_ev_;
+  Event dma_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

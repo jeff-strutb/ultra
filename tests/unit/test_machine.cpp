@@ -1,8 +1,11 @@
 // Whole-machine properties: determinism, save-state round trip, PI DMA, VI field rate, CIC.
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <random>
 
@@ -29,22 +32,79 @@ TEST_CASE("machine: two runs of the same ROM reach identical states") {
   CHECK(a->save_state() == b->save_state());
 }
 
-TEST_CASE("machine: a loaded save state continues exactly like the original") {
-  auto a = boot(kRom, 0.3);
-  const Tick saved_at = a->now();  // run_until stops on an instruction boundary at or after 0.3 s
-  const std::vector<u8> mid = a->save_state();
-  a->run_until(seconds(0.6));
-  const std::vector<u8> end_a = a->save_state();
+namespace {
+// A machine that records its bus trace to a file, read back once the sink is closed.
+struct Traced {
+  std::filesystem::path path;
+  std::unique_ptr<System> sys;
+  explicit Traced(const std::string& name)
+      : path(std::filesystem::temp_directory_path() / ("ultra-unit-" + name + ".trace")) {
+    std::string err;
+    auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
+    REQUIRE(cart);
+    SystemConfig cfg;
+    cfg.trace_path = path.string();
+    sys = std::make_unique<System>(cfg, std::move(cart));
+    sys->power_on();
+  }
+  ~Traced() { std::filesystem::remove(path); }
+  std::vector<TraceRecord> records() {
+    sys->trace().close();
+    std::vector<u8> bytes(std::filesystem::file_size(path));
+    std::FILE* f = std::fopen(path.string().c_str(), "rb");
+    REQUIRE(f);
+    REQUIRE(std::fread(bytes.data(), 1, bytes.size(), f) == bytes.size());
+    std::fclose(f);
+    REQUIRE(bytes.size() >= sizeof(TraceFileHeader));
+    std::vector<TraceRecord> out((bytes.size() - sizeof(TraceFileHeader)) / sizeof(TraceRecord));
+    std::memcpy(out.data(), bytes.data() + sizeof(TraceFileHeader),
+                out.size() * sizeof(TraceRecord));
+    return out;
+  }
+};
 
-  std::string err;
-  auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
-  REQUIRE(cart);
-  System b(SystemConfig{}, std::move(cart));
-  b.power_on();
-  b.load_state(mid);
-  REQUIRE(b.now() == saved_at);
-  b.run_until(seconds(0.6));
-  CHECK(b.save_state() == end_a);
+bool same(const TraceRecord& x, const TraceRecord& y) { return std::memcmp(&x, &y, sizeof x) == 0; }
+}  // namespace
+
+// ADR 0003: a state saved at any point continues exactly like the machine it came from. A runs
+// on after saving; B loads the state into a fresh machine. Every bus transaction B makes must
+// equal A's after the save point, and the final states must be equal. A field missing from a
+// serializer is caught when it changes bus traffic or saved state inside a window. The save
+// points cover the PIF boot ROM, a PI DMA in flight during IPL3, and the ROM's own code.
+TEST_CASE("machine: a loaded save state continues exactly like the original") {
+  enum class Point { PifBoot, PiDma, Program };
+  const Point point = GENERATE(Point::PifBoot, Point::PiDma, Point::Program);
+  constexpr Tick kWindow = kRcpClockHz / 10;  // 0.1 s
+
+  Traced a("roundtrip-a");
+  switch (point) {
+    case Point::PifBoot: a.sys->run_until(seconds(0.05)); break;
+    case Point::PiDma:
+      while (!a.sys->pi().dma_busy() && a.sys->now() < seconds(1.0))
+        a.sys->run_until(a.sys->now() + 64);
+      REQUIRE(a.sys->pi().dma_busy());
+      break;
+    case Point::Program: a.sys->run_until(seconds(1.0)); break;
+  }
+  const Tick saved_at = a.sys->now();
+  const u64 records_before = a.sys->trace().count();
+  const std::vector<u8> mid = a.sys->save_state();
+  a.sys->run_until(saved_at + kWindow);
+  const std::vector<u8> end_a = a.sys->save_state();
+
+  Traced b("roundtrip-b");
+  b.sys->load_state(mid);
+  REQUIRE(b.sys->now() == saved_at);
+  b.sys->run_until(saved_at + kWindow);
+  CHECK(b.sys->save_state() == end_a);
+
+  const std::vector<TraceRecord> ta = a.records(), tb = b.records();
+  REQUIRE(ta.size() >= records_before);
+  REQUIRE(tb.size() == ta.size() - records_before);
+  REQUIRE(!tb.empty());
+  const auto after_save = ta.begin() + static_cast<std::ptrdiff_t>(records_before);
+  const auto mismatch = std::mismatch(tb.begin(), tb.end(), after_save, same);
+  CHECK(mismatch.first == tb.end());
 }
 
 TEST_CASE("machine: a failed load leaves the machine exactly as it was") {

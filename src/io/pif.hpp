@@ -69,7 +69,7 @@ class Pif {
   bool boot_terminated_ = false;
   bool halt_cpu_ = false;
   u64 checksum_from_cpu_ = 0;
-  Event timeout_ev_;
+  Event timeout_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra
