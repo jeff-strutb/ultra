@@ -336,8 +336,8 @@ hold no microcode data, so that the wraparound tests can store there.
 
 On the console the group makes about 15,000 RSP runs and writes about 3.8 MB. Ultra has no
 RSP core yet: the first runs miss the BREAK, the group skips the rest, and the sweep series
-have no elements (`S_RSPF_INFO` says so). The run stays under the harness's 4 MiB ISViewer
-capture.
+have no elements (`S_RSPF_INFO` says so). The harness drains ISViewer output as it arrives,
+so the full stream is collected whatever its size.
 
 ### RDRAM contention and line length [0x61, 0x62] → SPEC probes 4 and 6
 
