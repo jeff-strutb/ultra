@@ -48,6 +48,7 @@
 #include <vector>
 
 #include "core/system.hpp"
+#include "isviewer.hpp"
 #include "png.hpp"
 
 using namespace ultra;
@@ -266,21 +267,18 @@ Outcome run_hwprobe(const std::string& rom, const std::string& sav, double secon
   if (!sys->cart().flashram()) return {false, "ROM does not declare FlashRAM"};
   const Tick limit = static_cast<Tick>(seconds * static_cast<double>(kRcpClockHz));
   const Tick step = kRcpClockHz / 50;
-  const std::string& out = sys->cart().isviewer_output();
-  bool done = false;
-  while (sys->now() < limit && !sys->cpu().frozen()) {
-    sys->run_until(std::min(limit, sys->now() + step));
-    if (out.find("HWP RECORD STAGE 1") != std::string::npos) {
-      done = true;
-      break;
-    }
-  }
-  if (!log.empty()) std::ofstream(log, std::ios::binary) << out;
+  // The full record streams over ISViewer ahead of the completion line and can exceed the
+  // cartridge's output buffer, so the output is drained as it arrives.
+  std::ofstream log_file;
+  if (!log.empty()) log_file.open(log, std::ios::binary);
+  const bool done = harness::run_until_isviewer(*sys, "HWP RECORD STAGE 1", limit, step,
+                                                log.empty() ? nullptr : &log_file);
   const auto& data = sys->cart().flashram()->data();
   std::ofstream(sav, std::ios::binary).write(reinterpret_cast<const char*>(data.data()),
                                              static_cast<std::streamsize>(data.size()));
   char buf[96];
   std::snprintf(buf, sizeof buf, "%.2f s emulated", static_cast<double>(sys->now()) / kRcpClockHz);
+  if (sys->cart().isviewer_dropped() != 0) return {false, std::string("ISViewer output was dropped, ") + buf};
   if (!done)
     return {false, std::string("record not finished after ") + buf + (sys->cpu().frozen() ? ", cpu frozen" : "")};
   return {true, std::string("record written, ") + buf};
