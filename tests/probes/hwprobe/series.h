@@ -105,6 +105,24 @@
 #define S_RDP             0x7500 // 4 per configuration (probes2.c rdp_build) x 4 reps: Count ticks to the full-sync interrupt, DP_CLOCK, DP_BUFBUSY, DP_PIPEBUSY, DP_TMEM, DP_STATUS
 #define S_RDP_INFO        0x7501 // 4 command words per configuration
 
+// ---- RSP functional sweep (rsp_func.c, rsp_func_ucode.S): full record only. HWP_TIMEOUT bytes
+// (all ones) where the RSP did not reach the BREAK. Ranged ids are listed by their base. ----
+#define S_RSPF_INFO       0x9000 // 4 microcode loaded, RSP runs, runs that failed, 1 if the RSP stopped answering (later runs skipped), IMEM bytes, DMEM bytes, vector-op cases, element-sweep cases, runs that reached the BREAK. When none did and the RSP stopped answering, every other 0x9xxx series except S_RSPF_VCASES and S_RSPF_SCALAR_ADDR has 0 elements
+#define S_RSPF_VCASES     0x9001 // 2 per vector-op case 0..255: vs[8], vt[8], vd before[8], preload H'[8], M[8], L[8], VCO, VCC, VCE, 0 x5
+#define S_RSPF_COP0       0x9002 // 4 RSP MFC0 $0..$15, $7 again, $7 after MTC0 $7 = 0, per signal 0..7: SP_STATUS after the RSP sets it, after it clears it; then CPU: SP_STATUS, SP_SEMAPHORE read twice
+#define S_RSPF_MOVE       0x9003 // 4 MFC2 t5 of $v08 per element 0..15; $v08 (4 words) after MTC2 0x13579BDF per element 0..15; VCO, VCC, VCE after CTC2 0xFFFFFFFF to $0..$3; CFC2 of $0..$3 with VCO 0x1234, VCC 0x5678, VCE 0x9A
+#define S_RSPF_SCALAR     0x9004 // 4 per op (lb lh lw lbu lhu lwu sb sh sw) per address in S_RSPF_SCALAR_ADDR: t5, DMEM 0x230..0x23F, 0xFF0..0xFFF, 0x000..0x00F
+#define S_RSPF_SCALAR_ADDR 0x9005 // 4 the base register values (offset 0)
+#define S_RSPF_VOP        0x9100 // 2 per funct f in id 0x91ff: COP2 vd=3 vs=1 vt=2, per case 0..255 with e = 0, then per e = 1..15 per case 128..143: vd[8], ACC high[8], middle[8], low[8], VCO, VCC, VCE, 0
+#define S_RSPF_VOP_ID(f)  (0x9100 | (f))
+#define S_RSPF_RCP        0x9200 // 4 VRCP then VRCPH of $v00: (high << 16) | low per input 4096 c .. 4096 c + 4095, chunk c = 0..15 in id 0x920c
+#define S_RSPF_RSQ        0x9210 // 4 as S_RSPF_RCP with VRSQ and VRSQH
+#define S_RSPF_RCPD       0x9220 // 4 VRCPH, VRCPL, VRCPH of $v00 per input 4096 c .. (rsp_func.c div_double_input), chunk c = 0..3: input, (high << 16) | low
+#define S_RSPF_RSQD       0x9230 // 4 as S_RSPF_RCPD with VRSQH and VRSQL
+#define S_RSPF_RCPD_SPECIAL 0x9240 // 4 as S_RSPF_RCPD for the 32 inputs of rsp_func.c DIV_SPECIAL
+#define S_RSPF_RSQD_SPECIAL 0x9241 // 4 as S_RSPF_RSQD for DIV_SPECIAL
+#define S_RSPF_LS         0x9300 // 2 id 0x93SO: S = 2 store + set, O = LWC2/SWC2 opcode 0..11; set 0 base 0x230 + off, set 1 base 0xFF0 + off; per off 0..15 per element 0..15: loads $v08 ($v08..$v15 for O = 10, 11), stores the 64-byte window
+
 // ---- Run log ----
 #define S_GROUP_TIME      0x7F00 // 4 per group that ran: group id, Count ticks it took (wraps), unexpected exceptions
 #define S_FAULT           0x7F01 // 4 per unexpected exception: group id, Cause, EPC, BadVAddr, Status

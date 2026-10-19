@@ -31,6 +31,7 @@ static const hwp_group_t stage1_groups[] = {
     {0x75, "RDP commands", grp_rdp},
     {0x61, "RDRAM contention", grp_rdram_contend},
     {0x62, "VI line length", grp_vi_hsync},
+    {0x90, "RSP functional sweep", grp_rsp_func},
     {0x55, "TLB shutdown", grp_tlb_shutdown},  // last: may disable the TLB until reset
 };
 static const hwp_group_t stage2_groups[] = {

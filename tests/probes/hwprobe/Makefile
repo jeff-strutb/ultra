@@ -14,8 +14,8 @@ CFLAGS += -DHWP_BUILD_ID=\"$(BUILD_ID)\" -Wall -Werror -O2
 # hwp_entry runs before libdragon's _start (entry.S).
 LDFLAGS += -e hwp_entry
 
-SRCS := main.c boot.c loops.c record.c flash.c pi.c display.c vectors.c probes.c probes2.c sink.c \
-        entry.S exc.S loops_asm.S probes_asm.S probes2_asm.S rsp_probe.S
+SRCS := main.c boot.c loops.c record.c flash.c pi.c display.c vectors.c probes.c probes2.c sink.c rsp_func.c \
+        entry.S exc.S loops_asm.S probes_asm.S probes2_asm.S rsp_probe.S rsp_func_ucode.S
 OBJS := $(addprefix $(BUILD_DIR)/,$(patsubst %.S,%.o,$(SRCS:.c=.o)))
 
 # hwprobe-cold.z64: the same program behind libdragon's IPL3 patched to capture the CPU and

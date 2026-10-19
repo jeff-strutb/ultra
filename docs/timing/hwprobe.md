@@ -272,6 +272,63 @@ fill rectangles at three sizes in 16 bpp and one in 32 bpp; tile loads; copy-mod
 1-cycle, 1-cycle with Z, 1-cycle blended and 2-cycle textured rectangles; and flat triangles at
 two sizes. The triangle encoding is unverified: Ultra has no RDP yet.
 
+### RSP functional sweep [0x90] → the Phase 1 RSP oracle
+
+What every RSP instruction computes, not how long it takes. The results are megabytes, so they
+go only to the full record (`rec_series_full`, series 0x9000-0x9FFF in `series.h`). FlashRAM
+gains only this group's `S_GROUP_TIME` entry.
+
+The microcode is `rsp_func_ucode.S`. (libdragon builds any `.S` whose name starts with `rsp` as
+RSP code. Its object would be `rsp_func.o`, the same name as the C driver's, so the microcode
+cannot be called `rsp_func.S`.) Each of its four entries runs a fixed frame around a 4-word
+IMEM slot. While the RSP is halted, the CPU writes the instruction under test into that slot
+and the inputs into DMEM. It then starts the entry and reads the outputs after the BREAK.
+Every encoding is built in `rsp_func.c`. They match libdragon's assembler bit for bit (checked
+for each instruction form). The CPU never waits longer than 5 ms per run. After 4 runs in a
+row that miss the BREAK, the group stops starting the RSP. DMEM 0x000-0x03F and 0xFC0-0xFFF
+hold no microcode data, so that the wraparound tests can store there.
+
+- **Vector compute** (`S_RSPF_VOP` 0x91ff, one series per funct f = 0x00-0x3F, the undefined
+  ones included). Each funct runs as `vd=$v03 vs=$v01 vt=$v02`. It runs over 256 cases with
+  e = 0, then over cases 128-143 with each of e = 1-15. Cases 0-127 pair each of 16 edge
+  values (0, ±1, 0x7FFF, 0x8000, 0x8001, 0x4000, 0xC000, 0x00FF, 0xFF00, 0x0100, 0x5555,
+  0xAAAA, 0x7FFE, 2, 0xFFFE) with every other, under four accumulator values per lane. Cases
+  128-255 are xorshift-random. VCO, VCC and VCE are set per case with CTC2. Before each case,
+  the frame runs `vrcp $v07.e0, $v00.e0` (a fixed divide state). It then preloads the
+  accumulator with VMUDH and VMADH ×3 of H' × 0x4000, VMADH of M × 1, and VMADN of L × 1,
+  which gives (H << 32) | (M << 16) | L when H' = H + M[15]. Each case records vd, the three
+  accumulator slices (VSAR 8, 9, 10) and VCO/VCC/VCE. The inputs are `S_RSPF_VCASES`. The
+  VNOP series (f = 0x37) shows each case's preloaded accumulator and flags as the console
+  holds them.
+- **Divide tables**. VRCP and VRSQ run on every 16-bit input (`S_RSPF_RCP`, `S_RSPF_RSQ`, 16
+  chunks of 4096), each followed by VRCPH/VRSQH of $v00 for the high half. That covers all
+  512 entries of both ROM tables at every shift. The double-precision path is VRCPH (VRSQH)
+  of the high half, VRCPL (VRSQL) of the low half, then VRCPH (VRSQH) of $v00. It runs on
+  16384 inputs: both signs, shifts 0, 1, 6, 7, 14, 15, 20 and 21 (both parities, for the
+  square root), low bits all 0 or all 1, and every table index (`S_RSPF_RCPD`, `S_RSPF_RSQD`,
+  stored as input/result pairs; the 1024 shift-0 inputs with low bits set repeat the shift-0
+  ones). There are 32 more special inputs (`*_SPECIAL`). The divide state carries from one
+  input to the next in the order listed, which matters when emulating it.
+- **Vector loads and stores** (`S_RSPF_LS` 0x93SO). LWC2 and SWC2 opcodes 0-11 (lbv lsv llv
+  ldv lqv lrv lpv luv lhv lfv lwv ltv, and sbv … stv) on $v08, at base 0x230 + off and
+  0xFF0 + off (across the end of DMEM), for every off 0-15 and element 0-15. $v08-$v15 start
+  with byte j of $vR = (R << 4) | j. The DMEM windows hold 0x40 + i. Loads record $v08, or
+  $v08-$v15 for lwv and ltv. Stores record the 64-byte window.
+- **Scalar DMEM rules** (`S_RSPF_SCALAR`). lb lh lw lbu lhu lwu sb sh sw at 0x230-0x237,
+  0xFF9-0xFFF and three addresses with bits above 11 set. Each records the loaded register and
+  DMEM around both ends. lwu is not an RSP instruction (libdragon's assembler rejects it), so
+  this records what the console does with that encoding.
+- **COP2 moves** (`S_RSPF_MOVE`). MFC2 and MTC2 at every byte element 0-15, CTC2 of all ones to
+  control registers 0-3, and CFC2 of 0-3.
+- **COP0** (`S_RSPF_COP0`). MFC0 of all 16 registers from the RSP, the semaphore taken and
+  released, each signal set and cleared from the RSP with SP_STATUS read back, then SP_STATUS
+  and the semaphore as the CPU sees them afterwards.
+
+On the console the group makes about 15,000 RSP runs and writes about 3.8 MB. Ultra has no
+RSP core yet: the first runs miss the BREAK, the group skips the rest, and the sweep series
+have no elements (`S_RSPF_INFO` says so). The run stays under the harness's 4 MiB ISViewer
+capture.
+
 ### RDRAM contention and line length [0x61, 0x62] → SPEC probes 4 and 6
 
 The uncached load loop at four strides while idle, while the RSP streams 3 KiB DMAs, and while
