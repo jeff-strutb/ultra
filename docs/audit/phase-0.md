@@ -374,3 +374,12 @@ proven it.
 - **2026-10-19, licensing note.** The krom ROM images and `N64_BOOTCODE.BIN` (Nintendo's 6102
   IPL3) are no longer tracked, and history was rewritten to remove them from every commit.
   `tests/roms/krom/ROMS.sha256` pins the images to obtain locally.
+- **2026-10-19, F2 (and the power-on TLB part of F7).** The 17 `CPUTest/Exceptions` ROMs are in
+  the manifest as expected failures, each explained row by row from a side-by-side capture in
+  three ledger entries: `krom-reference-everdrive-exceptions` (10 ROMs: launcher Status and
+  leftover values only), `krom-reference-exceptions-tlb` (6 ROMs: launcher Status/KX/TLB, and
+  our power-on TLB) and `exception-compare-latency` (1 ROM: every check passes; unexplained
+  Count-delta spread, open). New parameter rows `tlb-poweron` and `tlb-shutdown` record the
+  all-zero power-on TLB and the unmodelled TLB shutdown as Guesses with probes. Every manifest
+  `fail` line now names its ledger key. Gate: 117 entries, 0 not as expected; the status block
+  reads 91 / 112 ROMs.

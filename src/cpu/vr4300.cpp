@@ -30,9 +30,9 @@ Vr4300::Vr4300(Bus& bus, Scheduler& sched, CpuPins& pins) : bus_(bus), sched_(sc
   context_ = Context::BadVPN2::set(context_, (badvaddr_ >> 13) & 0x7FFFF);
   xcontext_ = XContext::BadVPN2::set(xcontext_, (badvaddr_ >> 13) & 0x7FFFFFF);
   xcontext_ = XContext::R::set(xcontext_, badvaddr_ >> 62);
-  // TLB contents are undefined at power on (manual 5.4); ours start as all-zero entries. Their
-  // compare masks must be derived like any written entry, so a never-written entry matches
-  // only VPN2 0 / ASID 0 instead of every address.
+  // TLB contents are undefined at power on (manual 6.4.4); ours start as all-zero entries
+  // (Guess: ledger "tlb-poweron"). Their compare masks must be derived like any written entry,
+  // so a never-written entry matches only VPN2 0 / ASID 0 instead of every address.
   for (u32 i = 0; i < tlb_.size(); ++i) tlb_refresh_entry(i);
 }
 

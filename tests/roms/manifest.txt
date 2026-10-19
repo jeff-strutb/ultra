@@ -106,7 +106,29 @@ krom/DMAAlignment-PI-cart/DMAAlignment-PI-ROM-FROM_large_6 pass screen krom/CPUT
 
 # COP0Register's references were captured after an EverDrive64 launch (Status 0x241000E0); a
 # console booting through the PIF has Status 0x34000000. Ledger "krom-reference-cop0register".
-krom/CP0/COP0Register fail screen krom/CPUTest/CP0/COP0Register/COP0Register.N64 krom/CPUTest/CP0/COP0Register/COP0Register-before-overflow.png
+krom/CP0/COP0Register fail screen krom/CPUTest/CP0/COP0Register/COP0Register.N64 krom/CPUTest/CP0/COP0Register/COP0Register-before-overflow.png  # ledger krom-reference-cop0register
+
+# krom CPUTest/Exceptions. Every reference was captured after an EverDrive64 launch, and each
+# ROM checks Status against the launcher value 0x241000E0, so a PIF boot cannot match them.
+# Ledger "krom-reference-everdrive-exceptions", "krom-reference-exceptions-tlb" and
+# "exception-compare-latency" give each ROM's full set of differences.
+krom/Exceptions/Syscall/ExceptionSyscall fail screen krom/CPUTest/Exceptions/Syscall/ExceptionSyscall.n64 krom/CPUTest/Exceptions/Syscall/ExceptionSyscall.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Syscall/ExceptionSyscallDelay fail screen krom/CPUTest/Exceptions/Syscall/ExceptionSyscallDelay.n64 krom/CPUTest/Exceptions/Syscall/ExceptionSyscallDelay.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Syscall/ExceptionSyscallDelay2 fail screen krom/CPUTest/Exceptions/Syscall/ExceptionSyscallDelay2.n64 krom/CPUTest/Exceptions/Syscall/ExceptionSyscallDelay2.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Syscall/ExceptionSyscallWhileInException fail screen krom/CPUTest/Exceptions/Syscall/ExceptionSyscallWhileInException.n64 krom/CPUTest/Exceptions/Syscall/ExceptionSyscallWhileInException.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Trap/ExceptionTEQ fail screen krom/CPUTest/Exceptions/Trap/ExceptionTEQ.n64 krom/CPUTest/Exceptions/Trap/ExceptionTEQ.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Trap/ExceptionTEQDelay fail screen krom/CPUTest/Exceptions/Trap/ExceptionTEQDelay.n64 krom/CPUTest/Exceptions/Trap/ExceptionTEQDelay.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Unaligned/ExceptionUnaligned fail screen krom/CPUTest/Exceptions/Unaligned/ExceptionUnaligned.n64 krom/CPUTest/Exceptions/Unaligned/ExceptionUnaligned.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Unaligned/ExceptionUnalignedDelay fail screen krom/CPUTest/Exceptions/Unaligned/ExceptionUnalignedDelay.n64 krom/CPUTest/Exceptions/Unaligned/ExceptionUnalignedDelay.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/Compare/ExceptionCompareRegisters fail screen krom/CPUTest/Exceptions/Compare/ExceptionCompareRegisters.n64 krom/CPUTest/Exceptions/Compare/ExceptionCompareRegisters.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/VIIntr/ExceptionVIIntrDisabled fail screen krom/CPUTest/Exceptions/VIIntr/ExceptionVIIntrDisabled.n64 krom/CPUTest/Exceptions/VIIntr/ExceptionVIIntrDisabled.png  # ledger krom-reference-everdrive-exceptions
+krom/Exceptions/TLB/ExceptionTLBReadMiss fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMiss.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMiss.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/TLB/ExceptionTLBReadMissDelay fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissDelay.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissDelay.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/TLB/ExceptionTLBReadMissNested fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissNested.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissNested.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/TLB/ExceptionTLBReadMissNestedDelay fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissNestedDelay.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBReadMissNestedDelay.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/TLB/ExceptionTLBWriteMiss fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBWriteMiss.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBWriteMiss.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/TLB/ExceptionTLBWriteMissDelay fail screen krom/CPUTest/Exceptions/TLB/ExceptionTLBWriteMissDelay.n64 krom/CPUTest/Exceptions/TLB/ExceptionTLBWriteMissDelay.png  # ledger krom-reference-exceptions-tlb
+krom/Exceptions/Compare/ExceptionCompareDisabled fail screen krom/CPUTest/Exceptions/Compare/ExceptionCompareDisabled.n64 krom/CPUTest/Exceptions/Compare/ExceptionCompareDisabled.png  # ledger exception-compare-latency
 
 # krom timing ROMs: per-instruction loop counts against the hardware counts in the ROM source.
 # Within 2% now (ledger "rcp-reg-read", "cpu-timing-residual"); not yet within the hardware
