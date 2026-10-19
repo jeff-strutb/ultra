@@ -5,7 +5,7 @@ Sources: **[n64brew]** pages "PIF-NUS", "CIC-NUS", "Initial Program Load", "Seri
 specification of the IPL2 checksum and the 6105 challenge, written by a separate party from
 jago85/PifChecksum and jago85/UltraCIC_C (those sources are cited there, not here); **[dis]** our
 own disassembly of the 6102 IPL3 (as embedded in the krom ROMs) and of libdragon's IPL3 (as
-embedded in n64-systemtest).
+embedded in n64-systemtest); **[UM]** NEC VR4300 User's Manual (U10504EJ7V0UM00).
 
 `io/cic.cpp` and the checksum routine in `io/pif_boot_rom.cpp` were written from [spec] alone
 by an implementer who did not read the jago85 sources. (Earlier versions of both mirrored
@@ -28,7 +28,8 @@ its history. Phase 0 audit finding F1.)
    to check), then jump to IPL3 at 0xA4000040 ([n64brew] "PIF-NUS", "Initial Program Load").
 4. **IPL3** (the cartridge's own code) initialises RDRAM, copies the game and terminates the
    boot (command 0x08). If it does not do so within 5 seconds the PIF halts the console
-   ([n64brew] "PIF-NUS", command 0x08).
+   ([n64brew] "PIF-NUS", command 0x08). Terminating the boot also enables the RESET button,
+   and must be done again after every soft reset ([n64brew] "PIF-NUS", command 0x08).
 
 Nintendo's IPL1/IPL2 are not shipped. `io/pif_boot_rom.cpp` assembles a clean-room program
 that performs steps 2-3 with `mips::Assembler`. Its timing differs from the real ROM (ledger
@@ -84,3 +85,32 @@ own IPL3, so an IPL3 that no retail CIC accepts still boots. This models a flash
 emulation in direct-boot mode, not console hardware: SummerCart64 computes that checksum
 (`sw/deployer`, `sign_ipl3`) and sets it with its `CIC_PARAMS_SET` command. By default the PIF
 halts the CPU on a mismatch, as a console with a retail CIC does.
+
+## Console reset
+
+Source: [n64brew] "PIF-NUS", Console Reset, and command 0x08; [n64brew] "CIC-NUS" (the soft
+reset does not repeat the CIC's boot sequence); [UM] 6.4.6 and 14.2 (NMI).
+
+1. The RESET button is only enabled once the boot was terminated with command 0x08.
+2. Pressing it makes the PIF assert the CPU's Int2, the "pre-NMI" interrupt (Cause.IP4), so
+   that software can finish saving and idle the RCP.
+3. The PIF sends RESET to the CIC, which waits its 500 ms grace time and acknowledges; the PIF
+   then waits for the button to be released.
+4. The PIF drives NMI, which sends the CPU to 0xBFC00000 with ErrorEPC = PC and Status BEV,
+   ERL and SR set ([UM] 6.4.6), and unlocks the PIF ROM so that IPL1 runs again. The RCP is
+   not reset at all.
+
+The model (`Pif::press_reset`, `io/pif.cpp`): a press and release at the same instant. A press
+before boot termination, while a reset is pending, or after the PIF halted the console is
+ignored. At the press Int2 is asserted. `kPreNmiToNmiTicks` (0.5 s, ledger
+`pif-prenmi-to-nmi`) later Int2 is released, the CPU's NMI latch is set, and the PIF re-enters
+reset mode: ROM unlocked, boot not terminated, the boot-info word republished with reset type
+1 (byte 0x24 bit 2) and the seeds learned at power on, command byte 0x80, and the 5-second
+termination timeout armed again (ledger `pif-boot-timeout`). Our IPL2 passes reset type 1 to
+IPL3 in s5.
+
+Int2 has no acknowledge, so the model holds it until the NMI. That is what software expects:
+libdragon's interrupt handler (`src/inthandler.S`, a program, not an emulator) masks IM4 after
+the first pre-NMI interrupt because the bit "will stay pending" in Cause. Whether the PIF
+releases the line at the NMI or some time before it is not documented (ledger
+`pif-prenmi-to-nmi`).

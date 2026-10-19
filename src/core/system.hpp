@@ -50,6 +50,10 @@ class System {
   // Cold boot: PIF ROM image, CIC handshake, CPU cold reset at 0xBFC0_0000.
   void power_on();
 
+  // The console's RESET button, pressed and released now (Pif::press_reset). Returns whether
+  // the PIF accepted the press.
+  bool press_reset() { return pif_.press_reset(sched_.now()); }
+
   // Run until the master clock reaches `limit`. Returns early only if nothing can ever
   // change again (CPU frozen and no pending events).
   void run_until(Tick limit);
@@ -63,6 +67,7 @@ class System {
   Vi& vi() noexcept { return vi_; }
   Mi& mi() noexcept { return mi_; }
   Pif& pif() noexcept { return pif_; }
+  CpuPins& pins() noexcept { return pins_; }
   Ri& ri() noexcept { return ri_; }
   Pi& pi() noexcept { return pi_; }
   SpInterface& sp() noexcept { return sp_; }

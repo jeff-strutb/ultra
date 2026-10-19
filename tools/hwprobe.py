@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Decode and compare hwprobe records (docs/timing/hwprobe.md).
 
-  hwprobe.py dump SAV [--all]        list every series, check CRCs, summarise
+  hwprobe.py dump SAV [--all] [--stages N]
+                                     list every series, check CRCs, summarise; with
+                                     --stages N, also fail unless stages 1..N are complete
   hwprobe.py json SAV OUT            write every decoded series to OUT
   hwprobe.py compare HW EMU          series-by-series differences, HW being the oracle
   hwprobe.py loops SAV               uncached-read loop times in MasterClocks
@@ -181,9 +183,11 @@ def describe(s):
     return f"{len(v)} values, min {min(v)}, max {max(v)}"
 
 
-def cmd_dump(path, show_all=False):
+def cmd_dump(path, show_all=False, stages=0):
     bad = 0
     for st, info in zip((1, 2), parse(path)):
+        if st <= stages and not info["complete"]:
+            bad += 1
         if not info["complete"] and not info["series"]:
             print(f"stage {st}: not run")
             continue
@@ -249,7 +253,8 @@ def cmd_compare(hw_path, emu_path):
 
 def main(argv):
     if len(argv) >= 3 and argv[1] == "dump":
-        return cmd_dump(argv[2], "--all" in argv)
+        stages = int(argv[argv.index("--stages") + 1]) if "--stages" in argv else 0
+        return cmd_dump(argv[2], "--all" in argv, stages)
     if len(argv) == 4 and argv[1] == "json":
         return cmd_json(argv[2], argv[3])
     if len(argv) == 3 and argv[1] == "loops":

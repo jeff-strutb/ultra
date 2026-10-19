@@ -13,9 +13,11 @@
 //       eight hex digits. Reads them back from the framebuffer with the ROM's own 8x8 font and
 //       compares each with the hardware count listed in COUNTS. Passes when every count is
 //       within TOLERANCE percent (the ledger states the tolerance and why).
-//   ultra_harness hwprobe ROM SAV [--seconds S] [--log FILE]
+//   ultra_harness hwprobe ROM SAV [--seconds S] [--log FILE] [--stage2]
 //       Runs tests/probes/hwprobe headless until its stage 1 record is written, then writes the
 //       emulated FlashRAM (128 KiB, as a flashcart's .sav) to SAV. docs/timing/hwprobe.md.
+//       --stage2 then presses RESET once stage 1 is in its reset wait loop, and runs on until
+//       the stage 2 record is written as well.
 //   ultra_harness hwprobe-full ROM OUT [--seconds S] [--direct]
 //       Runs hwprobe stage 1 headless and writes its full record (the file a flashcart's SD
 //       card receives) to OUT. --direct boots as SC64 direct boot does: the CIC reports the
@@ -258,8 +260,11 @@ Outcome run_kromcount(const std::string& rom, const std::string& font_path,
   return {detail.empty(), buf + detail};
 }
 
+// RDRAM word the stage 1 reset wait loop increments every iteration (HWP_LOW_LOOPS, hwp.h).
+constexpr u32 kHwprobeWaitLoopsAddr = 0x390;
+
 Outcome run_hwprobe(const std::string& rom, const std::string& sav, double seconds,
-                   const std::string& log) {
+                   const std::string& log, bool stage2) {
   std::string err;
   auto sys = boot(rom, err);
   if (!sys) return {false, err};
@@ -267,12 +272,24 @@ Outcome run_hwprobe(const std::string& rom, const std::string& sav, double secon
   const Tick limit = static_cast<Tick>(seconds * static_cast<double>(kRcpClockHz));
   const Tick step = kRcpClockHz / 50;
   const std::string& out = sys->cart().isviewer_output();
+  const char* want = stage2 ? "HWP RECORD STAGE 2" : "HWP RECORD STAGE 1";
   bool done = false;
+  bool pressed = false;
   while (sys->now() < limit && !sys->cpu().frozen()) {
     sys->run_until(std::min(limit, sys->now() + step));
-    if (out.find("HWP RECORD STAGE 1") != std::string::npos) {
+    if (out.find(want) != std::string::npos) {
       done = true;
       break;
+    }
+    // Press RESET as a person would after STAGE 1 DONE: once the wait loop is running, so the
+    // pre-NMI interrupt is armed and the loop's Count trail times the NMI.
+    if (stage2 && !pressed && out.find("HWP RECORD STAGE 1") != std::string::npos) {
+      u32 avail = 0;
+      const u8* w = sys->rdram().resolve(kHwprobeWaitLoopsAddr, &avail);
+      if (w && avail >= 4 && load_be32(w) != 0) {
+        if (!sys->press_reset()) return {false, "the PIF ignored the RESET press"};
+        pressed = true;
+      }
     }
   }
   if (!log.empty()) std::ofstream(log, std::ios::binary) << out;
@@ -282,8 +299,9 @@ Outcome run_hwprobe(const std::string& rom, const std::string& sav, double secon
   char buf[96];
   std::snprintf(buf, sizeof buf, "%.2f s emulated", static_cast<double>(sys->now()) / kRcpClockHz);
   if (!done)
-    return {false, std::string("record not finished after ") + buf + (sys->cpu().frozen() ? ", cpu frozen" : "")};
-  return {true, std::string("record written, ") + buf};
+    return {false, std::string(stage2 && !pressed ? "RESET never pressed" : "record not finished") +
+                       " after " + buf + (sys->cpu().frozen() ? ", cpu frozen" : "")};
+  return {true, std::string(stage2 ? "both records written, " : "record written, ") + buf};
 }
 
 int run_manifest(const std::string& path, const std::string& rom_dir, bool allow_missing) {
@@ -397,7 +415,10 @@ int main(int argc, char** argv) {
     std::string log;
     for (int i = 4; i + 1 < argc; ++i)
       if (std::string(argv[i]) == "--log") log = argv[i + 1];
-    Outcome o = run_hwprobe(argv[2], argv[3], opt_seconds(argc, argv, 60), log);
+    bool stage2 = false;
+    for (int i = 4; i < argc; ++i)
+      if (std::string(argv[i]) == "--stage2") stage2 = true;
+    Outcome o = run_hwprobe(argv[2], argv[3], opt_seconds(argc, argv, 60), log, stage2);
     std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
     return o.pass ? 0 : 1;
   }
@@ -410,6 +431,6 @@ int main(int argc, char** argv) {
     }
     return run_manifest(argv[2], rom_dir, allow_missing);
   }
-  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | hwprobe ROM SAV | manifest FILE [--rom-dir DIR] [--allow-missing]\n");
+  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | hwprobe ROM SAV [--stage2] | manifest FILE [--rom-dir DIR] [--allow-missing]\n");
   return 2;
 }

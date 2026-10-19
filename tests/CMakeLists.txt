@@ -23,16 +23,16 @@ set_tests_properties(rom-manifest PROPERTIES TIMEOUT 1200 LABELS rom)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME ledger-exact COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/check_ledger.py)
 
-# The console measurement ROM (docs/timing/hwprobe.md) runs headless and leaves a complete
-# record: every series present and every CRC intact. Its numbers are not compared here; the
-# oracle is a console's .sav.
+# The console measurement ROM (docs/timing/hwprobe.md) runs headless through both stages, RESET
+# pressed between them, and leaves two complete records: every series present and every CRC
+# intact. Its numbers are not compared here; the oracle is a console's .sav.
 add_test(NAME hwprobe-emulated
          COMMAND ultra_harness hwprobe ${CMAKE_CURRENT_SOURCE_DIR}/probes/hwprobe/hwprobe.z64
-                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-emulated.sav --seconds 30)
+                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-emulated.sav --seconds 30 --stage2)
 set_tests_properties(hwprobe-emulated PROPERTIES FIXTURES_SETUP hwprobe-sav LABELS rom)
 add_test(NAME hwprobe-record
          COMMAND Python3::Interpreter -I ${CMAKE_SOURCE_DIR}/tools/hwprobe.py dump
-                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-emulated.sav)
+                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-emulated.sav --stages 2)
 set_tests_properties(hwprobe-record PROPERTIES FIXTURES_REQUIRED hwprobe-sav LABELS rom)
 
 # The cold-boot build: its patched IPL3 boots only with a flashcart's CIC override (--direct),

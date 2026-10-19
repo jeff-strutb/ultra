@@ -24,33 +24,67 @@ constexpr u32 kChallengeOffset = 0x30;
 constexpr Tick kBootTimeoutTicks = 5 * kRcpClockHz;
 }  // namespace
 
-Pif::Pif(Scheduler& sched) : sched_(sched) {
+Pif::Pif(Scheduler& sched, CpuPins& pins) : sched_(sched), pins_(pins) {
   sched_.add(timeout_ev_, "pif.boot_timeout", &Pif::timeout_event, this);
+  sched_.add(nmi_ev_, "pif.nmi", &Pif::nmi_event, this);
 }
 
 void Pif::power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom,
                    std::optional<u64> checksum) {
   cic_ = cic;
   expected_checksum_ = checksum.value_or(cic_info(cic).ipl2_checksum);
+  tv_ = tv;
   rom_.fill(0);
   for (usize i = 0; i < boot_rom.size() && (i + 1) * 4 <= kRomBytes; ++i)
     store_be32(rom_.data() + i * 4, boot_rom[i]);
   ram_.fill(0);
+  halt_cpu_ = false;
+  reset_pending_ = false;
+  sched_.cancel(nmi_ev_);
+  publish_boot_info(false);
+}
+
+void Pif::publish_boot_info(bool nmi_reset) {
+  // Enter reset mode: the ROM is readable again and the boot must be terminated anew
+  // (n64brew "PIF-NUS": command 0x08 "must also be set again after soft resets"; the NMI
+  // "unlocks the internal PIF ROM"). The CIC handshake result is published to PIF RAM
+  // 0x24..0x27, then command bit 0x80 is set (Console startup steps 3-5). After an NMI the
+  // CIC is not asked again (n64brew "CIC-NUS": the soft reset does not repeat its boot
+  // sequence); the PIF republishes what it learned at power on.
   rom_locked_ = false;
   boot_terminated_ = false;
-  halt_cpu_ = false;
   checksum_from_cpu_ = 0;
-
-  // CIC handshake result published to PIF RAM 0x24..0x27, then command bit 0x80 set
-  // (n64brew "PIF-NUS", Console startup steps 3-5).
-  const CicInfo& info = cic_info(cic);
-  const u8 tv_type = tv == VideoStandard::Pal ? 0 : tv == VideoStandard::Mpal ? 2 : 1;
-  ram_[kBootInfoOffset + 0] = tv_type;  // reset type 0 (cold), ROM type 0 (cartridge)
+  const CicInfo& info = cic_info(cic_);
+  const u8 tv_type = tv_ == VideoStandard::Pal ? 0 : tv_ == VideoStandard::Mpal ? 2 : 1;
+  // ROM type 0 (cartridge); reset type 1 after an NMI.
+  ram_[kBootInfoOffset + 0] = static_cast<u8>(tv_type | (nmi_reset ? kBootInfoResetNmi : 0));
   ram_[kBootInfoOffset + 1] = info.seed;
   ram_[kBootInfoOffset + 2] = info.seed;
   ram_[kBootInfoOffset + 3] = 0;
   ram_[kCommandByte] = kCmdDone;
+  // The 5-second limit after a soft reset as after power on: Guess, ledger "pif-boot-timeout".
   sched_.schedule(timeout_ev_, sched_.now() + kBootTimeoutTicks);
+}
+
+bool Pif::press_reset(Tick t) {
+  if (!boot_terminated_ || reset_pending_ || halt_cpu_) return false;
+  // n64brew "PIF-NUS", Console Reset steps 3-8: pre-NMI (INT2) now; the CIC acknowledges the
+  // RESET command after its grace time and the PIF, the button already released, drives NMI.
+  // INT2 has no acknowledge, so it stays asserted until the reset (libdragon inthandler.S
+  // masks IM4 for that reason); Guess, ledger "pif-prenmi-to-nmi".
+  pins_.set(CpuPins::kPreNmi, true);
+  reset_pending_ = true;
+  sched_.schedule(nmi_ev_, t + kPreNmiToNmiTicks);
+  return true;
+}
+
+void Pif::on_nmi(Tick) {
+  // NMI* falling edge: the VR4300 latches it (manual 14.2, Figure 14-1); the CPU clears the
+  // latch when it takes the exception. The RCP is not reset (n64brew "PIF-NUS").
+  pins_.set(CpuPins::kPreNmi, false);
+  pins_.nmi = true;
+  reset_pending_ = false;
+  publish_boot_info(true);
 }
 
 u32 Pif::read_word(u32 addr) const noexcept {
@@ -155,15 +189,17 @@ void Pif::on_timeout(Tick) {
 }
 
 void Pif::serialize(SaveState& s) {
-  s.section("pif", 2);
+  s.section("pif", 3);
   s.array(ram_);
   s.array(rom_);
   s.value(cic_);
+  s.value(tv_);
   s.value(rom_locked_);
   s.value(boot_terminated_);
   s.value(halt_cpu_);
   s.value(checksum_from_cpu_);
   s.value(expected_checksum_);
+  s.value(reset_pending_);
 }
 
 }  // namespace ultra
