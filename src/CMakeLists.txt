@@ -32,6 +32,7 @@ ultra_library(ultra_io
   io/pif_boot_rom.cpp
   io/cic.cpp
   io/cart.cpp
+  io/flashram.cpp
   io/vi.cpp
   io/ai.cpp)
 target_link_libraries(ultra_io PUBLIC ultra_core ultra_memory)

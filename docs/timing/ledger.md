@@ -65,6 +65,9 @@ unexpected pass, so this ledger and the manifest must change together.
 | `ipl3-s7` | s7 at IPL3 entry | 0 | Guess | 6102 and libdragon IPL3 disassemblies do not read s7 | — |
 | `ai-fetch` | AI DMA fetch granularity | 8 bytes | Guess | Unmeasured | Probe "ai-dma" (Phase 1) |
 | `ai-status-count` | AI_STATUS COUNT/BC/WC fields | not modelled (0) | Guess | n64brew "Audio Interface" | Phase 1 AI work |
+| `flash-op-time` | FlashRAM erase and program duration | 0: complete at once, busy bits never seen set | Guess | n64brew "Flash": sector/chip erase 85-300 ms, page program 0.3-3.5 ms depending on the chip | hwprobe could time them; no game depends on the duration that we know of |
+| `flash-model` | FlashRAM chip model (`FlashRam::kSiliconId`) | MX29L1101_A, byte-indexed | Design | n64brew "Flash" lists byte- and word-indexed models; a cart carries one. Flashcarts emulate a byte-indexed one | — |
+| `flash-silicon-id-burst` | Silicon ID bytes by position in a burst | ID byte (address & 7) | Guess | n64brew "Flash": "only the size of the read burst matters"; the PI model reads 16-bit words by address, so the address stands in for the burst position. Equal for any burst that starts at the base | — |
 | `dp-span` | DP span registers 0x0430_0000 | read 0, writes ignored | Guess | Test registers; RDP is Phase 2 | Phase 2 |
 
 ## Expected-fail manifest entries

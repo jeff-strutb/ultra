@@ -12,3 +12,4 @@ compile_commands.json
 /tests/roms/krom/**/*.N64
 /tests/roms/krom/**/*.n64
 /tests/roms/krom/**/N64_BOOTCODE.BIN
+/tests/probes/hwprobe/build/

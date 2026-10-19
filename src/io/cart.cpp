@@ -8,6 +8,17 @@ namespace ultra {
 
 Cartridge::Cartridge(std::vector<u8> rom) : rom_(std::move(rom)), isv_(kIsvSize, 0) {
   isv_out_.reserve(kIsvOutCapacity);
+  if (homebrew_save_type() == kSaveTypeFlashRam) enable_flashram(true);
+}
+
+u8 Cartridge::homebrew_save_type() const noexcept {
+  if (rom_.size() < 0x40 || rom_[0x3C] != 'E' || rom_[0x3D] != 'D') return 0;
+  return static_cast<u8>(rom_[0x3F] >> 4);
+}
+
+void Cartridge::enable_flashram(bool on) {
+  if (on && !flash_) flash_ = std::make_unique<FlashRam>();
+  if (!on) flash_.reset();
 }
 
 std::unique_ptr<Cartridge> Cartridge::from_bytes(std::vector<u8> rom) {
@@ -54,6 +65,10 @@ bool Cartridge::read16(u32 addr, u16& out) const noexcept {
     out = load_be16(isv_.data() + (addr - kIsvBase));
     return true;
   }
+  if (flash_ && FlashRam::claims(addr)) {
+    out = flash_->read16(addr);
+    return true;
+  }
   if (addr >= kRomBase && addr - kRomBase < rom_.size()) {
     const u32 off = addr - kRomBase;
     out = static_cast<u16>((u16{rom_[off]} << 8) | (off + 1 < rom_.size() ? rom_[off + 1] : 0));
@@ -80,13 +95,18 @@ void Cartridge::write16(u32 addr, u16 v) {
       }
     }
   }
+  if (flash_ && FlashRam::claims(addr)) flash_->write16(addr, v);
   // ROM ignores writes.
 }
 
 void Cartridge::serialize(SaveState& s) {
-  s.section("cart", 1);
+  s.section("cart", 2);
   s.bytes(isv_.data(), isv_.size());
   s.value(isv_len_hi_);
+  bool has_flash = flash_ != nullptr;
+  s.value(has_flash);
+  if (s.loading()) enable_flashram(has_flash);
+  if (flash_) flash_->serialize(s);
 }
 
 }  // namespace ultra

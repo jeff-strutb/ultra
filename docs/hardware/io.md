@@ -44,6 +44,23 @@ the 128-byte internal buffer and the rule that a block never crosses a 2 KiB RDR
 
 These rules reproduce every n64-systemtest PI case; their internal mechanism is not documented.
 
+## FlashRAM
+
+`io/flashram.cpp`. Present when the ROM's Advanced Homebrew Header declares save type 5
+(bytes 0x3C-0x3D "ED", 0x3F bits 7:4; [n64brew] "ROM Header"), or when enabled by the host.
+
+| Fact | Source |
+|---|---|
+| 128 KiB at PI 0x0800_0000 (domain 2); write-only command register (CIR) at 0x0801_0000; 8 sectors of 128 pages of 128 bytes | [n64brew] "Flash", TLDR and Chip layout |
+| CIR commands by bits 31:24: 0x3C chip erase setup, 0x4B sector erase setup (page in 9:0), 0x78 erase, 0xA5 program page (page in 9:0), 0xB4 load page, 0xD2 status, 0xE1 silicon ID, 0xF0 read array | [n64brew] "Flash", Command Internal Register |
+| Power-on: Read Array mode, array readable at the base | [n64brew] "Flash", TLDR |
+| Status mode returns `00 <status>` for every 16-bit word; status bits 7 WSM_READY, 3 ERASE_OK, 2 PROGRAM_OK, 1 ERASE_BUSY, 0 PROGRAM_BUSY; writing 0 at offset 0 in Status mode clears the OK bits | [n64brew] "Flash", Status Mode |
+| Erase without a setup command is ignored; erase and program switch the chip to Status mode | [n64brew] "Flash", Erase, Page Program |
+| The page buffer starts as 0xFF, takes writes that set and clear bits (MX29L1100 behaviour), is readable, and returns to 0xFF after a program; programming ANDs it into the page | [n64brew] "Flash", Load Byte Page Mode, Page Program |
+| Silicon ID 0x11118001_00C2001D (MX29L1101_A, byte-indexed) | [n64brew] "Flash", Silicon ID table; which model: ledger `flash-model` |
+| Erase and program complete at once (hardware: 85-300 ms, 0.3-3.5 ms) | Guess, ledger `flash-op-time` |
+| In Silicon ID mode the burst position is taken from address bits 2:0 | Guess, ledger `flash-silicon-id-burst` |
+
 ## SI and PIF window
 
 | Fact | Source |

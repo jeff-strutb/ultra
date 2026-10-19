@@ -1,5 +1,6 @@
 #pragma once
-// Devices on the PI external bus: cartridge ROM, an ISViewer-style debug port, and open bus.
+// Devices on the PI external bus: cartridge ROM, FlashRAM save memory, an ISViewer-style debug
+// port, and open bus.
 // The PI bus is 16-bit; every device answers 16-bit reads/writes at 16-bit aligned PI-bus
 // addresses. Source: n64brew "Parallel Interface", The PI Bus / Open bus behavior.
 
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "common/types.hpp"
+#include "io/flashram.hpp"
 
 namespace ultra {
 
@@ -27,6 +29,15 @@ class Cartridge {
   // Header fields (n64brew "ROM Header").
   u32 header_word(u32 offset) const noexcept;
   char region_code() const noexcept { return rom_.size() > 0x3E ? static_cast<char>(rom_[0x3E]) : 0; }
+
+  // Save type declared by the Advanced Homebrew ROM Header: "ED" at 0x3C, save type in bits 7:4
+  // of 0x3F (n64brew "ROM Header"). 0 when the header is absent.
+  u8 homebrew_save_type() const noexcept;
+  static constexpr u8 kSaveTypeFlashRam = 5;
+
+  // FlashRAM at PI 0x0800_0000. Present when the header declares it, or when enabled here.
+  void enable_flashram(bool on);
+  FlashRam* flashram() noexcept { return flash_.get(); }
 
   // ISViewer debug port (IS-Viewer 64 compatible): a 64 KiB buffer in the PI address space at
   // 0x13FF_0000; writing a length to 0x13FF_0014 emits that many bytes from 0x13FF_0020.
@@ -55,6 +66,7 @@ class Cartridge {
   explicit Cartridge(std::vector<u8> rom);
 
   std::vector<u8> rom_;
+  std::unique_ptr<FlashRam> flash_;
   bool isviewer_enabled_ = true;
   std::vector<u8> isv_;
   std::string isv_out_;

@@ -13,6 +13,9 @@
 //       eight hex digits. Reads them back from the framebuffer with the ROM's own 8x8 font and
 //       compares each with the hardware count listed in COUNTS. Passes when every count is
 //       within TOLERANCE percent (the ledger states the tolerance and why).
+//   ultra_harness hwprobe ROM SAV [--seconds S] [--log FILE]
+//       Runs tests/probes/hwprobe headless until its stage 1 record is written, then writes the
+//       emulated FlashRAM (128 KiB, as a flashcart's .sav) to SAV. docs/timing/hwprobe.md.
 //   ultra_harness manifest FILE [--rom-dir DIR] [--allow-missing]
 //       Runs every entry of a manifest and checks the outcome against its expectation
 //       (pass / fail). An unexpected pass fails just like an unexpected failure, so the
@@ -208,6 +211,34 @@ Outcome run_kromcount(const std::string& rom, const std::string& font_path,
   return {detail.empty(), buf + detail};
 }
 
+Outcome run_hwprobe(const std::string& rom, const std::string& sav, double seconds,
+                   const std::string& log) {
+  std::string err;
+  auto sys = boot(rom, err);
+  if (!sys) return {false, err};
+  if (!sys->cart().flashram()) return {false, "ROM does not declare FlashRAM"};
+  const Tick limit = static_cast<Tick>(seconds * static_cast<double>(kRcpClockHz));
+  const Tick step = kRcpClockHz / 50;
+  const std::string& out = sys->cart().isviewer_output();
+  bool done = false;
+  while (sys->now() < limit && !sys->cpu().frozen()) {
+    sys->run_until(std::min(limit, sys->now() + step));
+    if (out.find("HWP RECORD STAGE 1") != std::string::npos) {
+      done = true;
+      break;
+    }
+  }
+  if (!log.empty()) std::ofstream(log, std::ios::binary) << out;
+  const auto& data = sys->cart().flashram()->data();
+  std::ofstream(sav, std::ios::binary).write(reinterpret_cast<const char*>(data.data()),
+                                             static_cast<std::streamsize>(data.size()));
+  char buf[96];
+  std::snprintf(buf, sizeof buf, "%.2f s emulated", static_cast<double>(sys->now()) / kRcpClockHz);
+  if (!done)
+    return {false, std::string("record not finished after ") + buf + (sys->cpu().frozen() ? ", cpu frozen" : "")};
+  return {true, std::string("record written, ") + buf};
+}
+
 int run_manifest(const std::string& path, const std::string& rom_dir, bool allow_missing) {
   std::ifstream in(path);
   if (!in) {
@@ -307,6 +338,14 @@ int main(int argc, char** argv) {
     std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
     return o.pass ? 0 : 1;
   }
+  if (argc >= 4 && std::string(argv[1]) == "hwprobe") {
+    std::string log;
+    for (int i = 4; i + 1 < argc; ++i)
+      if (std::string(argv[i]) == "--log") log = argv[i + 1];
+    Outcome o = run_hwprobe(argv[2], argv[3], opt_seconds(argc, argv, 60), log);
+    std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
+    return o.pass ? 0 : 1;
+  }
   if (argc >= 3 && std::string(argv[1]) == "manifest") {
     std::string rom_dir = ".";
     bool allow_missing = false;
@@ -316,6 +355,6 @@ int main(int argc, char** argv) {
     }
     return run_manifest(argv[2], rom_dir, allow_missing);
   }
-  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | manifest FILE [--rom-dir DIR] [--allow-missing]\n");
+  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | hwprobe ROM SAV | manifest FILE [--rom-dir DIR] [--allow-missing]\n");
   return 2;
 }
