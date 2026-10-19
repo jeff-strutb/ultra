@@ -33,7 +33,7 @@ All code is written from documentation and observed behavior, not from other emu
 1. Reading another emulator's source to learn a hardware fact is allowed. Copying, transliterating, or structurally mirroring its code is not. Any fact learned this way is recorded in `docs/hardware/` with a citation before it is implemented, so the implementation derives from our notes, not from their code.
 2. Lookup tables, constants and magic numbers are derived from the primary source (the hardware manual, a patent, a test ROM's measured result) and cited inline. Angrylion's tables are a known trap: several are derived empirically and have no primary source. Where that is the case, we regenerate them from first principles or from our own hardware captures, and document which.
 3. No vendored third-party emulator code. Test ROMs and test harness code under permissive licenses may be vendored into `tests/roms/` with their licenses intact.
-4. The repository license is MIT.
+4. The repository license is AGPL-3.0-only (`LICENSE`, `NOTICE`).
 
 **Primary sources (authoritative):**
 
@@ -52,7 +52,7 @@ All code is written from documentation and observed behavior, not from other emu
 | [n64-systemtest](https://github.com/lemmy-64/n64-systemtest) | MIT | CPU, COP0, TLB, COP1, RSP functional and timing tests. First CI gate. |
 | PeterLemon (krom) N64 tests | Unlicense | \~200 small ROMs covering CPU, RSP, RDP primitives, VI. |
 | Dillon's n64-tests | none | Basic CPU tests; run externally, not vendored. |
-| Our own probe ROMs | MIT | Timing probes measured on real hardware. See the Unknowns section. |
+| Our own probe ROMs | AGPL-3.0-only | Timing probes measured on real hardware. See the Unknowns section. |
 
 **Secondary references (read for understanding only):**
 
@@ -194,7 +194,7 @@ Two parts of the machine have no complete public timing description. The spec ha
 - `IRdpCost::cost(const Command&, const RdpState&) -> {ticks, traffic[]}`. The RDP timing half calls this and nothing else.
 - Both carry a `confidence()` enum (`Measured`, `Derived`, `Guess`) per parameter, surfaced in `ultra --timing-report`.
 
-**Probe ROMs (`tests/probes/`, built with libdragon, MIT).** Each probe runs a controlled workload, measures with `COUNT` and `DP_CLOCK`, and prints results over the ISViewer/UNFLoader debug channel and to the screen. The same ROM runs in the emulator; the harness diffs the numbers. All six probes, plus functional sweeps and the cold-boot capture, are combined in one ROM, `tests/probes/hwprobe` (docs/timing/hwprobe.md), the project's gold-standard test ROM.
+**Probe ROMs (`tests/probes/`, built with libdragon, AGPL-3.0-only).** Each probe runs a controlled workload, measures with `COUNT` and `DP_CLOCK`, and prints results over the ISViewer/UNFLoader debug channel and to the screen. The same ROM runs in the emulator; the harness diffs the numbers. All six probes, plus functional sweeps and the cold-boot capture, are combined in one ROM, `tests/probes/hwprobe` (docs/timing/hwprobe.md), the project's gold-standard test ROM.
 
 1. **CPU retirement:** straight-line instruction sequences per opcode class, cached and uncached, measuring `COUNT` deltas. Establishes the pipeline table. Mostly a cross-check of n64-systemtest, which already covers much of this.
 2. **Cache and TLB:** refill timing for I and D cache, write-back cost, TLB refill exception latency.

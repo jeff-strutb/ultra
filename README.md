@@ -228,3 +228,11 @@ resolved before this directory is published. Nintendo's PIF boot ROM is never ne
 emulator boots through its own clean-room IPL1/IPL2 ([docs/hardware/pif.md](docs/hardware/pif.md)).
 
 Commercial ROMs never enter the repository (`corpus/` is ignored); only their hashes will.
+
+## Licence
+
+Copyright (C) 2026 Jeffrey Wilbur. Ultra is licensed under the GNU Affero General Public
+License, version 3 ([LICENSE](LICENSE)). Anyone who distributes Ultra or a work based on it,
+or lets users interact with a modified version over a network, must keep the copyright and
+[NOTICE](NOTICE) and publish the complete source under the same licence. Third-party test
+ROMs keep their own licences ([tests/roms/README.md](tests/roms/README.md)).
