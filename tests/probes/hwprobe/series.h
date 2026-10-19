@@ -105,6 +105,25 @@
 #define S_RDP             0x7500 // 4 per configuration (probes2.c rdp_build) x 4 reps: Count ticks to the full-sync interrupt, DP_CLOCK, DP_BUFBUSY, DP_PIPEBUSY, DP_TMEM, DP_STATUS
 #define S_RDP_INFO        0x7501 // 4 command words per configuration
 
+// ---- RDP render matrix (rdp_render.c): full record only, never FlashRAM ----
+// n = case number in rdp_render.c build(), k = texture number (rdp_render.c TX_* order). Images
+// are 32 x 32, row-major, as RDRAM holds them. The colour series' element size is the case's
+// colour depth in bytes (1, 2 or 4; S_RDPR_INFO).
+#define S_RDPR_COLOR      0x8000 // 2 colour buffer of case n after its full sync (0x8000 | n)
+#define S_RDPR_COLOR_ID(n) (0x8000 | (n))
+#define S_RDPR_Z          0x8400 // 2 Z buffer of case n, for the cases that read or write Z (0x8400 | n)
+#define S_RDPR_Z_ID(n)    (0x8400 | (n))
+#define S_RDPR_CMD        0x8800 // 8 command words of case n as sent from RDRAM, closing sync pipe and sync full included (0x8800 | n)
+#define S_RDPR_CMD_ID(n)  (0x8800 | (n))
+#define S_RDPR_TEX        0x8C00 // 1 texture image k in RDRAM (0x8C00 | k): element size 1 for 4- and 8-bit, 2 for 16-bit, 4 for 32-bit
+#define S_RDPR_TEX_ID(k)  (0x8C00 | (k))
+#define S_RDPR_INFO       0x8F00 // 4 per case: n, colour bpp, width, height, flags (1 = Z recorded, 2 = command list truncated), Count ticks to the full-sync interrupt (HWP_TIMEOUT), DPC_STATUS, DPC_CLOCK
+#define S_RDPR_INIT16     0x8F01 // 2 colour buffer the CPU writes before each 16 bpp case
+#define S_RDPR_INIT32     0x8F02 // 4 as S_RDPR_INIT16, 32 bpp
+#define S_RDPR_INIT8      0x8F03 // 1 as S_RDPR_INIT16, 8 bpp
+#define S_RDPR_INITZ      0x8F04 // 2 Z buffer the CPU writes before every case
+#define S_RDPR_TEXINFO    0x8F05 // 4 per texture k: format, size, width, height, RDRAM physical address
+
 // ---- Run log ----
 #define S_GROUP_TIME      0x7F00 // 4 per group that ran: group id, Count ticks it took (wraps), unexpected exceptions
 #define S_FAULT           0x7F01 // 4 per unexpected exception: group id, Cause, EPC, BadVAddr, Status

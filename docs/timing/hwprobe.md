@@ -278,6 +278,60 @@ The uncached load loop at four strides while idle, while the RSP streams 3 KiB D
 the RDP fills the screen. The same loop with VI_H_SYNC set to four line lengths, since RDRAM
 refresh runs once per line.
 
+### RDP render matrix [0x80, series 0x8000-0x8FFF] → RDP raster oracle
+
+`rdp_render.c`. 121 small renders whose hardware pixels are the RDP raster oracle alongside
+Angrylion. Everything goes to the full record only (SD card or ISViewer), never to FlashRAM: the
+group is skipped when no full-record sink is open, and its only FlashRAM footprint is its row
+in `S_GROUP_TIME`.
+
+Every case draws into one 32 x 32 colour image at RDRAM 0x00100000 (8, 16 or 32 bpp) with its
+Z image at 0x00110000. Before each case the CPU writes a hashed colour pattern and a Z ramp
+across x that covers every Z exponent (`S_RDPR_INIT*`), so blends, memory-coverage reads and Z
+compares see varied memory. Each command list starts by setting the colour and Z images, every
+colour register, the key and convert registers, primitive depth and all eight tile descriptors
+to fixed values, and by Load Block of 4 KiB of zeros into TMEM. No case depends on an earlier
+one. The list is sent from RDRAM, ends in sync pipe and sync full, and is waited on for 20 ms
+at most.
+
+Per case n the record holds the colour buffer (`0x8000 | n`), the Z buffer for the cases that
+use Z (`0x8400 | n`), and the exact command words sent (`0x8800 | n`). `S_RDPR_INFO` gives each
+case's depth, flags, time to the full-sync interrupt, DPC_STATUS and DPC_CLOCK. The 18 CPU-generated
+textures are recorded as loaded (`0x8C00 | k`, `S_RDPR_TEXINFO`): RGBA16, RGBA32, IA4, IA8,
+IA16, I4, I8, CI4, CI8, a 16- and a 256-entry TLUT, YUV16, and a 32x32-to-1x1 RGBA16 mip chain.
+They mix s and t gradients (visible through filtering) with hashed low bits, so every bit of
+every format is exercised.
+
+| Cases | What |
+|---|---|
+| 0-4 | FILL: 16, 32 and 8 bpp; subpixel corners; scissor |
+| 5-10 | COPY: RGBA16, alpha compare, CI8 through a TLUT, I8 into 8 bpp, odd x, t step 0.5 |
+| 11-24 | 1-cycle point-sampled textures in every format and TLUT type (RGBA16, IA16, off), YUV with conversion, Load Block, a format reinterpreted through another tile |
+| 25-32 | point, bilinear and median filtering at fractional texel offsets |
+| 33-44 | wrap, mirror, clamp, clamp + mirror, masks, shifts, tile-size offsets, flipped and negative-step rectangles, subpixel rectangles |
+| 45-57 | combiner: lerps, overflow and underflow, key centre and scale, chroma key, K4/K5, primitive LOD fraction, noise (twice, for repeatability), alpha formula at 32 bpp, 2-cycle TEX0 x TEX1 and the second-cycle TEX0 |
+| 58-61 | alpha compare against blend alpha and against noise, 1- and 2-cycle |
+| 62-70 | RGB dither (magic square, Bayer, noise, off) and alpha dither (same, inverted, noise) through a memory blend, 16 and 32 bpp |
+| 71-78 | blender: alpha blend, fog, additive, blend colour, memory coverage, no force-blend, 2-cycle fog then blend |
+| 79-88 | coverage: AA off and on, coverage destination clamp, wrap, full and save, colour on overflow, coverage x alpha, 32 bpp, AA rectangles |
+| 89-98 | Z: compare and update, compare only, update only, interpenetrating, transparent, 32 bpp, primitive Z with two delta-Z values, decal, steep against shallow delta-Z, 2-cycle |
+| 99-108 | triangles: shaded (16, 32 bpp), textured point and bilinear, perspective, shade x texture with Z, right-major, sliver, off-scissor on every side, flat top and bottom |
+| 109-116 | LOD: 1x, 2x, 4x minification, perspective, 2-cycle trilinear, sharpen, detail, LOD on a rectangle |
+| 117-118 | scissor field mode, even and odd lines |
+| 119-120 | hazards n64brew lists as unknown, last so that a hang cannot cost the others: I4 copied into 8 bpp, 1-cycle into 8 bpp |
+
+Command encodings come from n64brew "Reality Display Processor/Commands"; other-mode,
+combiner and blender fields from libdragon's `rdpq_macros.h`. Triangle coefficients are
+computed on the CPU from three vertices with 64-bit integer arithmetic (edges in s15.16,
+shade and Z in s15.16, texture coordinates in s10.21). Ultra has no RDP yet, so the encodings
+have been checked only offline: decoding each recorded triangle recovers its vertices and their
+colours, every command stream parses to its exact length, and the textures match an
+independent re-derivation. In the emulator every case times out and every buffer equals its
+initial pattern.
+
+Not captured: the 16 bpp hidden (9th-bit) coverage bits, which the CPU cannot read; the
+memory-coverage blender cases show them indirectly.
+
 ### FlashRAM [0x7F] → `flash-op-time`
 
 The erase time and each page program time of the record writer itself.
@@ -295,5 +349,6 @@ like the console in `S_SI_RESULT`.
 ## Not covered
 
 `mi-ebus` (the EBus test mode is not documented
-well enough to drive safely), PAL timing (needs a PAL console), RDP pixel output (Angrylion is
-the oracle for that), and the bus-capture residuals (logic analyzer).
+well enough to drive safely), PAL timing (needs a PAL console), RDP pixel output beyond the
+render matrix (Angrylion is the oracle for the rest), and the bus-capture residuals (logic
+analyzer).
