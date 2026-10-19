@@ -6,6 +6,16 @@
 
 namespace ultra {
 
+namespace {
+// First word of a ROM dump in the two common byte-swapped file layouts, for the big-endian
+// header word 0x80371240 (n64brew "ROM Header", PI BSD DOM1 configuration).
+constexpr u32 kMagicByteSwapped16 = 0x37804012;  // .v64
+constexpr u32 kMagicLittleEndian32 = 0x40123780;  // .n64
+// The header and IPL3 occupy the first 4 KiB (n64brew "ROM Header").
+constexpr usize kMinRomBytes = 0x1000;
+constexpr usize kReadChunkBytes = 64 * 1024;
+}  // namespace
+
 Cartridge::Cartridge(std::vector<u8> rom) : rom_(std::move(rom)), isv_(kIsvSize, 0) {
   isv_out_.reserve(kIsvOutCapacity);
 }
@@ -13,9 +23,9 @@ Cartridge::Cartridge(std::vector<u8> rom) : rom_(std::move(rom)), isv_(kIsvSize,
 std::unique_ptr<Cartridge> Cartridge::from_bytes(std::vector<u8> rom) {
   if (rom.size() >= 4) {
     const u32 magic = load_be32(rom.data());
-    if (magic == 0x37804012) {  // .v64: 16-bit byte swapped
+    if (magic == kMagicByteSwapped16) {
       for (usize i = 0; i + 1 < rom.size(); i += 2) std::swap(rom[i], rom[i + 1]);
-    } else if (magic == 0x40123780) {  // .n64: 32-bit little endian
+    } else if (magic == kMagicLittleEndian32) {
       for (usize i = 0; i + 3 < rom.size(); i += 4) {
         std::swap(rom[i], rom[i + 3]);
         std::swap(rom[i + 1], rom[i + 2]);
@@ -32,11 +42,11 @@ std::unique_ptr<Cartridge> Cartridge::load(const std::string& path, std::string*
     return nullptr;
   }
   std::vector<u8> data;
-  u8 buf[1 << 16];
+  u8 buf[kReadChunkBytes];
   usize n;
   while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) data.insert(data.end(), buf, buf + n);
   std::fclose(f);
-  if (data.size() < 0x1000) {
+  if (data.size() < kMinRomBytes) {
     if (error) *error = "ROM too small: " + path;
     return nullptr;
   }
@@ -56,7 +66,8 @@ bool Cartridge::read16(u32 addr, u16& out) const noexcept {
   }
   if (addr >= kRomBase && addr - kRomBase < rom_.size()) {
     const u32 off = addr - kRomBase;
-    out = static_cast<u16>((u16{rom_[off]} << 8) | (off + 1 < rom_.size() ? rom_[off + 1] : 0));
+    const u8 pair[2] = {rom_[off], off + 1 < rom_.size() ? rom_[off + 1] : u8{0}};
+    out = load_be16(pair);
     return true;
   }
   return false;
@@ -70,7 +81,7 @@ void Cartridge::write16(u32 addr, u16 v) {
     if (addr == kIsvLenReg) {
       isv_len_hi_ = v;
     } else if (addr == kIsvLenReg + 2) {
-      const u32 len = (u32{isv_len_hi_} << 16) | v;
+      const u32 len = make32(isv_len_hi_, v);
       const u32 avail = kIsvSize - (kIsvBuffer - kIsvBase);
       for (u32 i = 0; i < len && i < avail; ++i) {
         if (isv_out_.size() < kIsvOutCapacity)

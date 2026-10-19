@@ -16,6 +16,20 @@ enum class SiReg : u32 {
   PifAdRd4b = 0x14,
   Status = 0x18,
 };
+// Register offset within the SI block (mirrored above).
+constexpr u32 kSiRegOffsetMask = 0x1C;
+
+// Register layouts. Source: n64brew "Serial Interface", SI_DRAM_ADDR and SI_STATUS.
+struct SiDramAddr {
+  using Addr = Bits<0, 24>;
+  static constexpr u32 kDmaAlignMask = ~3u;  // the DMA starts at a word boundary
+};
+struct SiStatus {
+  using DmaBusy = Bit<0>;  // also set for direct writes
+  using IoBusy = Bit<1>;
+  using DmaError = Bit<3>;
+  using Interrupt = Bit<12>;
+};
 
 // Serial packet durations. The SI-PIF link is clocked at SI/8 = MClock/32 (n64brew "Clock
 // Timing"); packet sizes from n64brew "Serial Interface": command (2 bits) + address
@@ -31,22 +45,20 @@ Si::Si(Scheduler& sched, Mi& mi, Ri& ri, Pif& pif) : sched_(sched), mi_(mi), ri_
 }
 
 u32 Si::read_reg(u32 paddr, Tick t) {
-  switch (static_cast<SiReg>(paddr & 0x1C)) {
+  switch (static_cast<SiReg>(paddr & kSiRegOffsetMask)) {
     case SiReg::DramAddr: return dram_addr_;
     case SiReg::PifAdRd64b:
     case SiReg::PifAdWr4b:
     case SiReg::PifAdWr64b:
     case SiReg::PifAdRd4b: return data_;
     case SiReg::Status: {
-      // Bit 0 DMA busy (also set for direct writes), 1 IO busy, 3 DMA error,
-      // 12 interrupt (n64brew "Serial Interface", SI_STATUS).
       u32 s = 0;
       if (busy(t)) {
-        s |= 1u;
-        if (op_ == Op::Wr4) s |= 2u;
+        s |= SiStatus::DmaBusy::mask;
+        if (op_ == Op::Wr4) s |= SiStatus::IoBusy::mask;
       }
-      if (dma_error_) s |= 8u;
-      if (mi_.pending(MiIntr::SI)) s |= 1u << 12;
+      if (dma_error_) s |= SiStatus::DmaError::mask;
+      if (mi_.pending(MiIntr::SI)) s |= SiStatus::Interrupt::mask;
       return s;
     }
   }
@@ -54,14 +66,14 @@ u32 Si::read_reg(u32 paddr, Tick t) {
 }
 
 void Si::write_reg(u32 paddr, u32 v, Tick t) {
-  switch (static_cast<SiReg>(paddr & 0x1C)) {
-    case SiReg::DramAddr: dram_addr_ = v & 0x00FF'FFFF; break;
+  switch (static_cast<SiReg>(paddr & kSiRegOffsetMask)) {
+    case SiReg::DramAddr: dram_addr_ = v & SiDramAddr::Addr::mask; break;
     case SiReg::PifAdRd64b:
       if (busy(t)) {
         dma_error_ = true;
         break;
       }
-      pif_addr_ = v & 0x7FC;
+      pif_addr_ = v & Pif::kWordAddrMask;
       op_ = Op::Rd64;
       busy_until_ = t + k64bTicks;
       sched_.schedule(finish_ev_, busy_until_);
@@ -71,8 +83,8 @@ void Si::write_reg(u32 paddr, u32 v, Tick t) {
         dma_error_ = true;
         break;
       }
-      pif_addr_ = v & 0x7FC;
-      ri_.read(Master::Si, dram_addr_ & ~3u, buf_.data(), 64, t);
+      pif_addr_ = v & Pif::kWordAddrMask;
+      ri_.read(Master::Si, dram_addr_ & SiDramAddr::kDmaAlignMask, buf_.data(), 64, t);
       op_ = Op::Wr64;
       busy_until_ = t + k64bTicks;
       sched_.schedule(finish_ev_, busy_until_);
@@ -101,7 +113,7 @@ Tick Si::io_read(u32 paddr, u32& out, Tick t) {
     sched_.cancel(finish_ev_);
     finish(busy_until_);
   }
-  pif_addr_ = paddr & 0x7FC;
+  pif_addr_ = paddr & Pif::kWordAddrMask;
   out = pif_.read_word(pif_addr_);
   data_ = out;
   return start + k4bTicks;
@@ -111,7 +123,7 @@ Tick Si::io_write(u32 paddr, u32 value, Tick t) {
   // Asynchronous: the SI latches the word and releases the CPU. Writes during a pending
   // write are ignored (n64brew "Memory map", SI external bus).
   if (busy(t)) return t + kWriteAcceptTicks;
-  pif_addr_ = paddr & 0x7FC;
+  pif_addr_ = paddr & Pif::kWordAddrMask;
   data_ = value;
   op_ = Op::Wr4;
   busy_until_ = t + k4bTicks;
@@ -123,7 +135,7 @@ void Si::finish(Tick t) {
   switch (op_) {
     case Op::Rd64:
       pif_.dma_read(buf_.data(), t);
-      ri_.write(Master::Si, dram_addr_ & ~3u, buf_.data(), 64, t);
+      ri_.write(Master::Si, dram_addr_ & SiDramAddr::kDmaAlignMask, buf_.data(), 64, t);
       break;
     case Op::Wr64: pif_.dma_write(buf_.data(), t); break;
     case Op::Wr4: pif_.write_word(pif_addr_, data_, t); break;

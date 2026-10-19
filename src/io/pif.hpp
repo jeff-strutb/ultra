@@ -26,6 +26,8 @@ class Pif {
  public:
   static constexpr u32 kRomBytes = 0x7C0;
   static constexpr u32 kRamBytes = 0x40;
+  // The PIF answers word accesses in a 2 KiB window: ROM then RAM (n64brew "PIF-NUS").
+  static constexpr u32 kWordAddrMask = kRomBytes + kRamBytes - 4;
 
   explicit Pif(Scheduler& sched);
 

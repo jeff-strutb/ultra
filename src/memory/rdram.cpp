@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "core/savestate.hpp"
+#include "memory/arbiter_params.h"
 
 namespace ultra {
 
@@ -17,8 +18,12 @@ constexpr u32 kDeviceType = 0xB4190010;
 // MinInterval read-only fields MinAckDelay=3, MinReadDelay=7, MinWriteDelay=1, scattered
 // over bits 31/23/15/7, 30/22/14/6, 29/21/13/5.
 // Source: n64brew "RDRAM", 0x07 MinInterval default bit values.
-constexpr u32 kMinIntervalRO = (1u << 15) | (1u << 7) | (1u << 22) | (1u << 14) | (1u << 6) |
-                               (1u << 5);
+using MinAckDelay = SlicedField<7, 4>;
+using MinReadDelay = SlicedField<6, 4>;
+using MinWriteDelay = SlicedField<5, 4>;
+constexpr u32 kMinIntervalRO =
+    MinAckDelay::place(3) | MinReadDelay::place(7) | MinWriteDelay::place(1);
+static_assert(kMinIntervalRO == 0x0040'C0E0);
 
 // DeviceManufacturer: NEC (0x0005), ManufactureCode unknown.
 // Guess (ledger "rdram-manufacturer"): the value differs per console; no software is known
@@ -27,22 +32,30 @@ constexpr u32 kDeviceManufacturer = 0x00000500;
 
 // Reset value of Delay: AckWinDelay=100b, ReadDelay=001b, AckDelay=00b, WriteDelay=100b.
 // Source: n64brew "RDRAM", 0x02 Delay (RW-n default columns).
-constexpr u32 kDelayReset = (4u << 27) | (1u << 19) | (0u << 11) | (4u << 3);
+constexpr u32 kDelayReset = RdramDelay::AckWinDelay::place(4) | RdramDelay::ReadDelay::place(1) |
+                            RdramDelay::AckDelay::place(0) | RdramDelay::WriteDelay::place(4);
 
 // Reset value of Mode: CE=1, X2=1, AS=1, CC=all ones (bits 23,22,15,14,7,6).
 // Source: n64brew "RDRAM", 0x03 Mode (RW-n default columns).
 constexpr u32 kModeReset = RdramMode::CE::mask | RdramMode::X2::mask | RdramMode::AS::mask |
                            RdramMode::kCcMask;
 
-// The RI is hardwired to WriteDelay = 1 TCycle and expects ReadDelay = 7 TCycles.
-// Source: n64brew "RDRAM", Reset Complications; IPL3 programs ReadDelay = 7.
-constexpr u32 kRiWriteDelay = 1;
-constexpr u32 kRiReadDelay = 7;
-constexpr u32 kBytesPerTCycle = 2;
+// The RI is hardwired to WriteDelay = 1 TCycle and expects ReadDelay = 7 TCycles; data moves
+// 2 bytes per TCycle (memory/arbiter_params.h).
+constexpr u32 kRiWriteDelay = arbiter_params::kWriteDelayTCycles;
+constexpr u32 kRiReadDelay = arbiter_params::kReadDelayTCycles;
+constexpr u32 kBytesPerTCycle = arbiter_params::kBytesPerTCycle;
+// Bursts wrap within a 2 KiB row (n64-systemtest "MI Repeat: Wrap2KiB").
+constexpr u32 kRowBytes = arbiter_params::kRowBytes;
+constexpr u32 row_wrap(u32 base, u32 i) {
+  return (base & ~(kRowBytes - 1)) | ((base + i) % kRowBytes);
+}
+// The data byte's top bit, which is the 9th bit's default (see mem_write).
+using DataSign = Bit<7>;
 }  // namespace
 
 Rdram::Rdram(u32 installed_bytes) {
-  if (installed_bytes != 4u << 20 && installed_bytes != 8u << 20)
+  if (installed_bytes != 4 * kMiB && installed_bytes != 8 * kMiB)
     throw std::invalid_argument("RDRAM size must be 4 or 8 MiB");
   device_count_ = installed_bytes / kDeviceBytes;
   data_ = std::make_unique<u8[]>(usize{installed_bytes});
@@ -69,7 +82,7 @@ void Rdram::rebuild_map() {
 }
 
 int Rdram::find_memory_device(u32 addr) const noexcept {
-  u32 region = (addr >> 20) & 63;
+  const u32 region = (addr / kMiB) % static_cast<u32>(map_.size());
   return map_[region];
 }
 
@@ -115,8 +128,7 @@ bool Rdram::mem_read(u32 addr, u8* out, u32 len, u8* ebits_out) {
       if (ebits_out) ebits_out[i] = 0;
       continue;
     }
-    // Bursts wrap within the 2 KiB row (n64-systemtest "MI Repeat: Wrap2KiB").
-    u32 off = (base & ~0x7FFu) | ((base + i - shift) & 0x7FF);
+    const u32 off = row_wrap(base, i - shift);
     out[i] = ones ? src[off] : 0;
     if (ebits_out) ebits_out[i] = ones ? esrc[off] : 0;
   }
@@ -140,8 +152,8 @@ bool Rdram::mem_write(u32 addr, const u8* data, const u8* ebits, u32 len, const 
     // CPU writes carry the 9th bit as the sign extension of each byte unless the writer
     // supplies it (n64brew "MIPS Interface", MI_MODE: "EBus appears to default to the sign
     // extension of each byte").
-    u8 e = ebits ? (j < len ? ebits[j] : 0) : static_cast<u8>(v >> 7);
-    u32 off = (base & ~0x7FFu) | ((base + i) & 0x7FF);  // row wrap
+    const u8 e = ebits ? (j < len ? ebits[j] : 0) : static_cast<u8>(DataSign::get(v));
+    const u32 off = row_wrap(base, i);
     dst[off] = v;
     edst[off] = e;
   }
@@ -198,15 +210,18 @@ namespace {
 u32 decode_reg(u32 offset) {
   // Registers mirror every 0x40 bytes; at offset >= 0x200 the DeviceType slot becomes Row.
   // Source: n64brew "RDRAM", Register summary.
-  u32 word = (offset >> 2) & 15;
-  if (offset >= 0x200 && word == 0) return static_cast<u32>(RdramReg::Row);
+  using Word = Bits<2, 4>;
+  constexpr u32 kRowRegionOffset = 0x200;
+  const u32 word = Word::get(offset);
+  if (offset >= kRowRegionOffset && word == 0) return static_cast<u32>(RdramReg::Row);
   return word;
 }
 }  // namespace
 
 u64 Rdram::reg_read(u32 id, u32 offset) {
   for (usize i = 0; i < device_count_; ++i) {
-    if (enabled(i) && id_match(i, id)) return u64{read_register_value(i, decode_reg(offset))} << 32;
+    // The register word is the first on the bus: the upper half of the octbyte.
+    if (enabled(i) && id_match(i, id)) return make64(read_register_value(i, decode_reg(offset)), 0);
   }
   return 0;
 }

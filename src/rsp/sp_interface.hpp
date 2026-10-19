@@ -26,6 +26,7 @@ struct SpStatusRead {
   using SStep = Bit<5>;
   using IntBreak = Bit<6>;
   using Sig = Bits<7, 8>;
+  static constexpr u32 sig(u32 i) noexcept { return 1u << (Sig::lo + i); }
 };
 // SP_STATUS write layout: (clear, set) pairs.
 struct SpStatusWrite {
@@ -41,12 +42,34 @@ struct SpStatusWrite {
   static constexpr u32 clr_sig(u32 i) noexcept { return 1u << (9 + 2 * i); }
   static constexpr u32 set_sig(u32 i) noexcept { return 1u << (10 + 2 * i); }
 };
-// SP_DMA_RDLEN / SP_DMA_WRLEN layout.
+// SP_DMA_RDLEN / SP_DMA_WRLEN layout. The DMA moves 8-byte units, so the low 3 bits of LEN
+// are not stored; a finished transfer leaves LEN at its all-ones value 0xFF8.
 struct SpDmaLen {
   using Len = Bits<0, 12>;
+  using LenUnits = Bits<3, 9>;
   using Count = Bits<12, 8>;
   using Skip = Bits<20, 12>;
+  static constexpr u32 kWriteMask = Skip::mask | Count::mask | LenUnits::mask;
+  static constexpr u32 kUnitBytes = 8;
 };
+// SP_DMA_SPADDR: bit 12 selects DMEM or IMEM; the address within it is in 8-byte units.
+struct SpMemAddr {
+  using Bank = Bit<12>;
+  using Addr = Bits<3, 9>;
+  using Offset = Bits<0, 12>;  // the address counter wraps within the bank
+  static constexpr u32 kWriteMask = Bank::mask | Addr::mask;
+};
+// SP_DMA_RAMADDR: 24-bit RDRAM address in 8-byte units.
+struct SpRamAddr {
+  using Addr = Bits<3, 21>;
+  using Wrap = Bits<0, 24>;
+};
+// SP_PC: a word address in IMEM.
+struct SpPc {
+  using Pc = Bits<2, 10>;
+};
+static_assert(SpMemAddr::kWriteMask == 0x1FF8 && SpRamAddr::Addr::mask == 0x00FF'FFF8 &&
+              SpDmaLen::LenUnits::mask == 0xFF8 && SpPc::Pc::mask == 0xFFC);
 
 class SpInterface {
  public:

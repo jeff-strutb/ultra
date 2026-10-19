@@ -46,6 +46,31 @@ struct RiError {
   using UnexpectedNack = Bit<1>;
   using OverRange = Bit<2>;
 };
+struct RiLatency {
+  using Latency = Bits<0, 4>;
+};
+// RI_CURRENT_LOAD read: unintended, a collection of bits from other registers (n64brew "RDRAM
+// Interface", RI_CURRENT_LOAD READ). Bits 1 and 2 read 1.
+struct RiCurrentLoadRead {
+  using ErrorAck = Bit<0>;
+  using One = Bits<1, 2>;
+  using StopR = Bit<3>;
+  using TSel0 = Bit<4>;
+};
+struct RiBankStatus {
+  using Valid = Bits<0, 8>;
+  using Dirty = Bits<8, 8>;
+};
+// Register offset within the RI block: 8 registers, 4 bytes apart (mirrored above).
+inline constexpr u32 kRiRegOffsetMask = 0x1C;
+
+// RDRAM addresses as the RI sees them: 26 bits. In register space, Adr[28:20] picks the
+// device and the low bits the register. Source: n64brew "RDRAM Interface", Memory addressing.
+inline constexpr u32 kRiAddrMask = 0x03FF'FFFF;
+struct RdramRegAddr {
+  using Device = Bits<10, 9>;
+  using Reg = Bits<0, 10>;
+};
 
 enum class RiRegister : u32 {
   Mode = 0x00,

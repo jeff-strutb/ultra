@@ -34,20 +34,16 @@ constexpr bool table_matches_enum() {
 }
 static_assert(table_matches_enum());
 
-// IPL3 occupies cartridge ROM 0x40..0xFFF ([n64brew] "ROM Header"; spec 1.1).
-constexpr std::size_t kIpl3RomOffset = 0x40;
-constexpr std::size_t kIpl3Bytes = 0xFC0;
 constexpr u32 kIpl3Words = kIpl3Bytes / 4;  // 1008 main-phase steps (spec 1.4)
 
-constexpr u32 kSeedMultiplier = 0x6C07'8965;  // K, spec 1.1
+constexpr u32 kSeedMultiplier = kIpl2SeedMultiplier;  // K, spec 1.1
 constexpr u32 kWordBias = 5;                  // S_3's x + 5, spec 1.4
 constexpr u32 kFinalStepIndex = 16;           // third argument of the last M, spec 1.5
 constexpr u64 kChecksumHighMask = 0xFFFF;     // H keeps 16 bits, spec 1.5
 
-constexpr u32 hi32(u64 v) { return static_cast<u32>(v >> 32); }
-constexpr u32 lo32(u64 v) { return static_cast<u32>(v); }
-constexpr u32 low5(u32 v) { return v & 31u; }
-constexpr u32 high5(u32 v) { return v >> 27; }
+// Rotation amounts: the low and the high 5 bits of a word (spec 1.3).
+constexpr u32 low5(u32 v) { return Bits<0, 5>::get(v); }
+constexpr u32 high5(u32 v) { return Bits<27, 5>::get(v); }
 constexpr u32 ror(u32 v, u32 r) { return std::rotr(v, static_cast<int>(r)); }
 constexpr u32 rol(u32 v, u32 r) { return std::rotl(v, static_cast<int>(r)); }
 
@@ -63,8 +59,7 @@ static_assert(mix(0xFFFF'FFFFu, 0xFFFF'FFFFu, 1) == 0xFFFF'FFFDu);
 
 u32 ipl3_word(std::span<const u8> ipl3, u32 index) {
   const std::size_t at = std::size_t{index} * 4;
-  return (u32{ipl3[at]} << 24) | (u32{ipl3[at + 1]} << 16) | (u32{ipl3[at + 2]} << 8) |
-         u32{ipl3[at + 3]};
+  return load_be32(ipl3.data() + at);
 }
 
 class Ipl2Checksum {
@@ -114,12 +109,12 @@ class Ipl2Checksum {
       const u32 y = acc_[j];
       sum += ror(y, low5(y));
       below = y < sum ? below + y : mix(below, y, j);
-      const bool bits_equal = ((y >> 1) & 1u) == (y & 1u);
+      const bool bits_equal = Bit<1>::test(y) == Bit<0>::test(y);
       parity = bits_equal ? parity + y : mix(parity, y, j);
       odd = (y & 1u) != 0 ? odd ^ y : mix(odd, y, j);
     }
-    const u64 high = mix(sum, below, kFinalStepIndex) & kChecksumHighMask;
-    return (high << 32) | (parity ^ odd);
+    const u32 high = static_cast<u32>(mix(sum, below, kFinalStepIndex) & kChecksumHighMask);
+    return make64(high, parity ^ odd);
   }
 
  private:

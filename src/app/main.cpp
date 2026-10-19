@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     if (a == "--seconds") seconds = std::atof(next());
     else if (a == "--fields") fields = std::strtoull(next(), nullptr, 10);
     else if (a == "--until") until = next();
-    else if (a == "--rdram") cfg.rdram_bytes = static_cast<u32>(std::atoi(next())) << 20;
+    else if (a == "--rdram") cfg.rdram_bytes = static_cast<u32>(std::atoi(next())) * Rdram::kMiB;
     else if (a == "--tv") {
       std::string_view t = next();
       cfg.tv = t == "pal" ? VideoStandard::Pal : t == "mpal" ? VideoStandard::Mpal : VideoStandard::Ntsc;

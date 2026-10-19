@@ -31,6 +31,28 @@ enum class PiRegister : u32 {
   Dom2Rls = 0x30,
 };
 
+// Register offset within the PI block: 13 registers, 4 bytes apart (mirrored above).
+inline constexpr u32 kPiRegOffsetMask = 0x3C;
+
+// Register layouts and writable bits. Source: n64brew "Parallel Interface", register tables.
+struct PiDramAddr {
+  using Addr = Bits<1, 23>;  // bit 0 reads as 0: DMAs are 16-bit aligned in RDRAM
+};
+struct PiCartAddr {
+  using Addr = Bits<1, 31>;
+};
+struct PiLen {  // PI_RD_LEN, PI_WR_LEN: length - 1
+  using Len = Bits<0, 24>;
+  static constexpr u32 kReadback = 0x7F;  // see Pi::read_reg
+};
+struct PiDomain {  // PI_BSD_DOMn_LAT/PWD/PGS/RLS
+  using Lat = Bits<0, 8>;
+  using Pwd = Bits<0, 8>;
+  using Pgs = Bits<0, 4>;
+  using Rls = Bits<0, 2>;
+};
+static_assert(PiDramAddr::Addr::mask == 0x00FF'FFFE && PiCartAddr::Addr::mask == 0xFFFF'FFFE);
+
 // Source: n64brew "Parallel Interface", PI_STATUS.
 struct PiStatusRead {
   using DmaBusy = Bit<0>;
@@ -82,7 +104,7 @@ class Pi {
 
   u32 dram_addr_ = 0;
   u32 cart_addr_ = 0;
-  u32 len_readback_ = 0x7F;
+  u32 len_readback_ = PiLen::kReadback;
   bool error_ = false;
   std::array<Domain, 2> dom_{};
 

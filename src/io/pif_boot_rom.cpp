@@ -17,6 +17,7 @@
 #include "io/pif_boot_rom.hpp"
 
 #include "common/mips_asm.hpp"
+#include "io/cic.hpp"
 
 namespace ultra {
 
@@ -30,8 +31,8 @@ constexpr u32 kIpl2Imem = 0xA400'1000;
 constexpr u32 kChecksumState = 0xA400'1F00;
 constexpr u32 kChecksumStateBytes = 16 * 4;
 constexpr u32 kStackTop = 0xA400'1FF0;
-constexpr u32 kSeedMultiplier = 0x6C07'8965;  // K, cic-algorithms.md 1.1
-constexpr u32 kLastStep = 0xFC0 / 4;          // 1008 IPL3 words, cic-algorithms.md 1.4
+constexpr u32 kSeedMultiplier = kIpl2SeedMultiplier;  // K, cic-algorithms.md 1.1
+constexpr u32 kLastStep = kIpl3Bytes / 4;  // 1008 IPL3 words, cic-algorithms.md 1.4
 
 // Rotates by the low 5 bits of `amt` (the shift instructions ignore the rest); the opposite
 // shift uses 32 - amt, which the hardware also reduces mod 32, so amt = 0 gives src.

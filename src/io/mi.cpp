@@ -16,6 +16,15 @@ constexpr u32 kMiVersion = 0x0202'0102;
 constexpr u32 kRdramRegSpace = 0x03F0'0000;
 
 enum class MiReg : u32 { Mode = 0x0, Version = 0x4, Interrupt = 0x8, Mask = 0xC };
+
+// RDRAM moves 8-byte words (octbytes); a 32-bit access uses the half that Addr[2] selects
+// (n64brew "MIPS Interface", MI's Mode).
+constexpr u32 kOctBytes = 8;
+constexpr u32 kHalfSelect = 4;
+constexpr u32 half_offset(u32 paddr, bool upper) {
+  return (upper || !(paddr & kHalfSelect)) ? 0 : kHalfSelect;
+}
+constexpr u32 octbyte_base(u32 paddr) { return paddr & ~(kOctBytes - 1); }
 }  // namespace
 
 Mi::Mi(Ri& ri, CpuPins& pins) : ri_(ri), pins_(pins) {}
@@ -64,10 +73,9 @@ void Mi::write_reg(u32 paddr, u32 v) {
     case MiReg::Version:
     case MiReg::Interrupt: break;
     case MiReg::Mask: {
-      // Bit pairs (clear, set) per interrupt, SP lowest (n64brew "MIPS Interface", MI_MASK).
-      for (u32 i = 0; i < 6; ++i) {
-        bool clr = (v >> (2 * i)) & 1;
-        bool set = (v >> (2 * i + 1)) & 1;
+      for (u32 i = 0; i < kMiIntrSources; ++i) {
+        const bool clr = (v & MiMaskWrite::clr(i)) != 0;
+        const bool set = (v & MiMaskWrite::set(i)) != 0;
         if (set && !clr) mask_ |= 1u << i;
         if (clr && !set) mask_ &= ~(1u << i);
       }
@@ -83,7 +91,7 @@ Tick Mi::cpu_read(Master m, u32 paddr, u32 size, u8* out, Tick t) {
     u8 oct[8];
     Tick done = ri_.reg_read(paddr, oct, t);
     if (size <= 4) {
-      std::memcpy(out, oct + ((upper || !(paddr & 4)) ? 0 : 4), 4);
+      std::memcpy(out, oct + half_offset(paddr, upper), 4);
     } else {
       std::memcpy(out, oct, 8);
     }
@@ -94,8 +102,8 @@ Tick Mi::cpu_read(Master m, u32 paddr, u32 size, u8* out, Tick t) {
     // Upper mode). n64brew "MIPS Interface", MI's Mode.
     u8 oct[8];
     u8 eb[8];
-    Tick done = ri_.read(m, paddr & ~7u, oct, 8, t, eb);
-    const u32 half = (upper || !(paddr & 4)) ? 0 : 4;
+    Tick done = ri_.read(m, octbyte_base(paddr), oct, 8, t, eb);
+    const u32 half = half_offset(paddr, upper);
     std::memcpy(out, oct + half, 4);
     if (MiModeRead::Ebus::test(mode_)) {
       // Guess (ledger "mi-ebus"): the 4 EBus bits replace the low nibble of the word.
@@ -128,22 +136,22 @@ Tick Mi::cpu_write(Master m, u32 paddr, u32 size, const u8* bus, Tick t) {
     u8 stream[128];
     if (paddr >= kRdramRegSpace) {
       const u32 n = rc + 1;
-      for (u32 i = 0; i < n; ++i) stream[i] = pattern[i & 7];
+      for (u32 i = 0; i < n; ++i) stream[i] = pattern[i % kOctBytes];
       return ri_.reg_write(paddr, stream, n, t);
     }
     // RepeatCount + 1 bytes are counted from the octbyte-aligned base, not from the address:
     // bytes [Addr[2:0], RepeatCount + 1) of the pattern stream are written.
     // Source: n64-systemtest src/tests/mi/repeat.rs (SB/SH/SW/SD at every start offset).
-    const u32 a = paddr & 7;
+    const u32 a = paddr % kOctBytes;
     const u32 end = rc + 1;
     if (end <= a) return t + kWriteAcceptTicks;
     const u32 len = (end + 7) & ~7u;
     u8 mask[128];
     for (u32 i = 0; i < len; ++i) {
-      stream[i] = pattern[i & 7];
+      stream[i] = pattern[i % kOctBytes];
       mask[i] = (i >= a && i < end) ? 1 : 0;
     }
-    return ri_.write(m, paddr & ~7u, stream, len, t, mask);
+    return ri_.write(m, octbyte_base(paddr), stream, len, t, mask);
   }
 
   if (paddr >= kRdramRegSpace) {
@@ -160,23 +168,23 @@ Tick Mi::cpu_write(Master m, u32 paddr, u32 size, const u8* bus, Tick t) {
   if (size <= 4) {
     u8 oct[8] = {};
     u8 mask[8] = {};
-    const u32 half = (upper || !(paddr & 4)) ? 0 : 4;
+    const u32 half = half_offset(paddr, upper);
     std::memcpy(oct + half, bus, 4);
-    for (u32 i = paddr & 7; i < (paddr & 7) + size && i < 8; ++i) mask[i] = 1;
+    for (u32 i = paddr % kOctBytes; i < paddr % kOctBytes + size && i < kOctBytes; ++i) mask[i] = 1;
     if (MiModeRead::Ebus::test(mode_)) {
       // Guess (ledger "mi-ebus"): the low nibble of the word supplies the 9th bits.
       u8 eb[8] = {};
       u32 w = load_be32(bus);
       for (u32 j = 0; j < 4; ++j) eb[half + j] = static_cast<u8>((w >> (3 - j)) & 1);
-      return ri_.write(m, paddr & ~7u, oct, 8, t, mask, eb);
+      return ri_.write(m, octbyte_base(paddr), oct, 8, t, mask, eb);
     }
-    return ri_.write(m, paddr & ~7u, oct, 8, t, mask);
+    return ri_.write(m, octbyte_base(paddr), oct, 8, t, mask);
   }
   if (size <= 8) {
     // Doubleword transfer (or a 5..7-byte SDL/SDR piece): one octbyte with a byte mask.
     u8 mask[8] = {};
-    for (u32 i = paddr & 7; i < (paddr & 7) + size && i < 8; ++i) mask[i] = 1;
-    return ri_.write(m, paddr & ~7u, bus, 8, t, mask);
+    for (u32 i = paddr % kOctBytes; i < paddr % kOctBytes + size && i < kOctBytes; ++i) mask[i] = 1;
+    return ri_.write(m, octbyte_base(paddr), bus, 8, t, mask);
   }
   return ri_.write(m, paddr, bus, size, t, nullptr, nullptr, TraceKind::BlockWrite);
 }

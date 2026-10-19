@@ -52,14 +52,14 @@ void Pif::power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom) {
 }
 
 u32 Pif::read_word(u32 addr) const noexcept {
-  addr &= 0x7FC;
+  addr &= kWordAddrMask;
   if (addr >= kRomBytes) return load_be32(ram_.data() + (addr - kRomBytes));
   // After lockout the ROM area reads as zero (n64brew "Serial Interface").
   return rom_locked_ ? 0 : load_be32(rom_.data() + addr);
 }
 
 void Pif::write_word(u32 addr, u32 value, Tick t) {
-  addr &= 0x7FC;
+  addr &= kWordAddrMask;
   if (addr < kRomBytes) return;  // writes to ROM are ignored by the PIF
   store_be32(ram_.data() + (addr - kRomBytes), value);
   if (addr - kRomBytes == (kCommandByte & ~3u)) process_command(t);
@@ -82,7 +82,7 @@ void Pif::process_command(Tick) {
       // Read and clear the 6-byte checksum written by IPL2, then acknowledge with 0x80.
       u64 c = 0;
       for (u32 i = 0; i < 6; ++i) {
-        c = (c << 8) | ram_[kChecksumOffset + i];
+        c = c * 256 + ram_[kChecksumOffset + i];  // big-endian bytes
         ram_[kChecksumOffset + i] = 0;
       }
       checksum_from_cpu_ = c;
@@ -106,14 +106,17 @@ void Pif::process_command(Tick) {
   }
   if (cmd & kCmdChallenge) {
     if (cic_ == CicType::Cic6105 || cic_ == CicType::Cic7105) {
+      // The challenge is 15 bytes = 30 nibbles, high nibble first.
+      using Hi = Bits<4, 4, u8>;
+      using Lo = Bits<0, 4, u8>;
       std::array<u8, 30> n;
       for (u32 i = 0; i < 15; ++i) {
-        n[2 * i] = ram_[kChallengeOffset + i] >> 4;
-        n[2 * i + 1] = ram_[kChallengeOffset + i] & 0xF;
+        n[2 * i] = Hi::get(ram_[kChallengeOffset + i]);
+        n[2 * i + 1] = Lo::get(ram_[kChallengeOffset + i]);
       }
       cic6105_challenge(n);
       for (u32 i = 0; i < 15; ++i)
-        ram_[kChallengeOffset + i] = static_cast<u8>((n[2 * i] << 4) | n[2 * i + 1]);
+        ram_[kChallengeOffset + i] = static_cast<u8>(Hi::place(n[2 * i]) | Lo::place(n[2 * i + 1]));
     } else {
       // Other CICs invert the challenge (n64brew "CIC-NUS", Command "Challenge").
       for (u32 i = 0; i < 15; ++i) ram_[kChallengeOffset + i] = static_cast<u8>(~ram_[kChallengeOffset + i]);

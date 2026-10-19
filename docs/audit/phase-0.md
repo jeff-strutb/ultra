@@ -469,3 +469,29 @@ proven it.
   - Dropping PI `dma_.remaining` fails the round-trip test.
   - Dropping CPU `prev_dc_stall_` passes the round-trip test, and also a 600-reload variant
     (tried, not kept). Only the source check catches it.
+- **2026-10-19, F8.** Hardware constants are now named and cited, and register fields go
+  through `Bits` (each new mask is `static_assert`ed against the literal it replaced):
+  - **Bus:** the physical address map (`core/bus.cpp`).
+  - **CPU:** vectors, power-on values, segment bounds, TLB size, Wired width, Count rate, page
+    sizes, cache tags (`PTag`), Cause IP2-IP7, EntryHi VPN/R, EntryLo TLB mask, LLAddr,
+    xkphys fields, and the CACHE, branch and jump fields.
+  - **I/O register layouts and write masks:** VI, PI, AI, SP, MI, DP, RI, SI, RDRAM (its
+    byte-sliced Delay/Mode/MinInterval fields use `SlicedField`), PIF, and the cartridge loader.
+  - **Duplicated facts now have one source:**
+    - RDRAM row and bank sizes, used by RI, PI, SP DMA and RDRAM row wrap;
+    - RI read/write delay and data rate, shared by RDRAM and the arbiter;
+    - the IPL2 checksum K and the IPL3 size, shared by `cic.cpp` and `pif_boot_rom.cpp`.
+  - **Citations:**
+    - Count corrected to 6.3.3.
+    - The FPU comment now says the EX-to-EX bypass is missing and the DC-to-EX bypass costs
+      the cycle (7.5.6, Figure 7-9); "DC->EX bypass" had been right but terse.
+    - The `cic.cpp` magic citation was already fixed under F1.
+
+  Shifts left in place are positional loops (page-mask pairs, `SlicedField`, SP and MI bit
+  pairs), arithmetic (sign tests, LUI, byte lanes), and host code in `app/main.cpp`.
+
+  Verification:
+  - Bus traces from the pre-F8 build (80b8fbc) and this one are byte-identical for
+    n64-systemtest-full (3 s), n64-systemtest-cpu (2 s), krom DMAAlignment-PI-ROM-FROM,
+    ExceptionVIIntrDisabled and CPUADD.
+  - The ROM gate gives 117 entries, 0 not as expected.

@@ -31,7 +31,7 @@ namespace ultra {
 class SaveState;
 
 struct SystemConfig {
-  u32 rdram_bytes = 8u << 20;      // 4 MiB console, 8 MiB with Expansion Pak
+  u32 rdram_bytes = 8 * Rdram::kMiB;  // 4 MiB console, 8 MiB with Expansion Pak
   std::optional<VideoStandard> tv;  // default: from the ROM header's region code
   std::optional<CicType> cic;       // default: detected from IPL3 like the PIF does
   std::string trace_path;           // empty: no trace

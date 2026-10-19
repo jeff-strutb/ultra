@@ -6,15 +6,25 @@
 #include "core/savestate.hpp"
 #include "io/cart.hpp"
 #include "io/mi.hpp"
+#include "memory/arbiter_params.h"
 #include "memory/ri.hpp"
 
 namespace ultra {
 
 namespace {
-// PI internal buffer is 128 bytes; blocks never cross a 2 KiB RDRAM page.
+// PI internal buffer is 128 bytes; blocks never cross a 2 KiB RDRAM page (a row).
 // Source: n64brew "Parallel Interface", DMA Transfers / Internal process.
 constexpr u32 kBufferBytes = 128;
-constexpr u32 kRdramPage = 0x800;
+constexpr u32 kRdramPage = arbiter_params::kRowBytes;
+// RDRAM is written in 8-byte words; the starting misalignment within one decides the first
+// block (Pi::dma_step).
+constexpr u32 kRdramWordBytes = 8;
+constexpr u32 misalignment(u32 dram_addr) { return dram_addr % kRdramWordBytes; }
+
+// PI bus domains: domain 2 is 0x0500_0000-0x05FF_FFFF and 0x0800_0000-0x0FFF_FFFF, everything
+// else domain 1. Source: n64brew "Parallel Interface", Domains table.
+constexpr u32 kDom2aBegin = 0x0500'0000, kDom2aEnd = 0x0600'0000;
+constexpr u32 kDom2bBegin = 0x0800'0000, kDom2bEnd = 0x1000'0000;
 
 // Address phase (ALEH/ALEL) cost per new PI page address, in MasterClock ticks.
 // Guess: n64brew describes ALEH high >= 7 and ALEL high >= 14 "FSB cycles" without a unit
@@ -28,9 +38,7 @@ Pi::Pi(Scheduler& sched, Mi& mi, Ri& ri, Cartridge* cart)
 }
 
 const Pi::Domain& Pi::domain_for(u32 a) const noexcept {
-  // Domain 2: 0x0500_0000-0x05FF_FFFF and 0x0800_0000-0x0FFF_FFFF; everything else domain 1.
-  // Source: n64brew "Parallel Interface", Domains table.
-  if ((a >= 0x0500'0000 && a < 0x0600'0000) || (a >= 0x0800'0000 && a < 0x1000'0000))
+  if ((a >= kDom2aBegin && a < kDom2aEnd) || (a >= kDom2bBegin && a < kDom2bEnd))
     return dom_[1];
   return dom_[0];
 }
@@ -63,7 +71,7 @@ u16 Pi::bus_read16(u32 addr) const noexcept {
 }
 
 u32 Pi::read_reg(u32 paddr, Tick t) {
-  switch (static_cast<PiRegister>(paddr & 0x3C)) {
+  switch (static_cast<PiRegister>(paddr & kPiRegOffsetMask)) {
     case PiRegister::DramAddr: return dram_addr_;
     case PiRegister::CartAddr: return cart_addr_;
     // The length registers read back 0x7F, or 0x7F minus the RDRAM misalignment after a
@@ -91,7 +99,7 @@ u32 Pi::read_reg(u32 paddr, Tick t) {
 }
 
 void Pi::write_reg(u32 paddr, u32 v, Tick t) {
-  const auto reg = static_cast<PiRegister>(paddr & 0x3C);
+  const auto reg = static_cast<PiRegister>(paddr & kPiRegOffsetMask);
   if (reg == PiRegister::Status) {
     if (PiStatusWrite::Reset::test(v)) {
       // Reset the DMA controller and stop any transfer (n64brew PI_STATUS write bit 0).
@@ -111,24 +119,25 @@ void Pi::write_reg(u32 paddr, u32 v, Tick t) {
     return;
   }
   switch (reg) {
-    case PiRegister::DramAddr: dram_addr_ = v & 0x00FF'FFFE; break;
-    case PiRegister::CartAddr: cart_addr_ = v & 0xFFFF'FFFE; break;
+    case PiRegister::DramAddr: dram_addr_ = v & PiDramAddr::Addr::mask; break;
+    case PiRegister::CartAddr: cart_addr_ = v & PiCartAddr::Addr::mask; break;
     case PiRegister::RdLen:
     case PiRegister::WrLen: {
-      const u32 len = (v & 0x00FF'FFFF) + 1;
-      len_readback_ = len < 8 ? 0x7F - (dram_addr_ & 7) : 0x7F;
+      const u32 len = PiLen::Len::get(v) + 1;
+      len_readback_ = len < kRdramWordBytes ? PiLen::kReadback - misalignment(dram_addr_)
+                                            : PiLen::kReadback;
       dma_.remaining = len;
       start_dma(reg == PiRegister::WrLen, t);
       break;
     }
-    case PiRegister::Dom1Lat: dom_[0].lat = v & 0xFF; break;
-    case PiRegister::Dom1Pwd: dom_[0].pwd = v & 0xFF; break;
-    case PiRegister::Dom1Pgs: dom_[0].pgs = v & 0xF; break;
-    case PiRegister::Dom1Rls: dom_[0].rls = v & 0x3; break;
-    case PiRegister::Dom2Lat: dom_[1].lat = v & 0xFF; break;
-    case PiRegister::Dom2Pwd: dom_[1].pwd = v & 0xFF; break;
-    case PiRegister::Dom2Pgs: dom_[1].pgs = v & 0xF; break;
-    case PiRegister::Dom2Rls: dom_[1].rls = v & 0x3; break;
+    case PiRegister::Dom1Lat: dom_[0].lat = PiDomain::Lat::get(v); break;
+    case PiRegister::Dom1Pwd: dom_[0].pwd = PiDomain::Pwd::get(v); break;
+    case PiRegister::Dom1Pgs: dom_[0].pgs = PiDomain::Pgs::get(v); break;
+    case PiRegister::Dom1Rls: dom_[0].rls = PiDomain::Rls::get(v); break;
+    case PiRegister::Dom2Lat: dom_[1].lat = PiDomain::Lat::get(v); break;
+    case PiRegister::Dom2Pwd: dom_[1].pwd = PiDomain::Pwd::get(v); break;
+    case PiRegister::Dom2Pgs: dom_[1].pgs = PiDomain::Pgs::get(v); break;
+    case PiRegister::Dom2Rls: dom_[1].rls = PiDomain::Rls::get(v); break;
     default: break;
   }
 }
@@ -142,7 +151,7 @@ Tick Pi::io_read(u32 paddr, u32& out, Tick t) {
   // Two 16-bit bus reads: the MSB at the (16-bit aligned) address, the LSB at address + 2.
   // Source: n64brew "Memory map", PI external bus.
   const u32 a = paddr & ~1u;
-  out = (u32{bus_read16(a)} << 16) | bus_read16(a + 2);
+  out = make32(bus_read16(a), bus_read16(a + 2));
   cart_addr_ = a + 4;
   return t + bus_ticks(a, 4);
 }
@@ -153,8 +162,8 @@ Tick Pi::io_write(u32 paddr, u32 value, Tick t) {
   if (t < io_busy_until_) return t + kWriteAcceptTicks;
   const u32 a = paddr & ~1u;
   if (cart_) {
-    cart_->write16(a, static_cast<u16>(value >> 16));
-    cart_->write16(a + 2, static_cast<u16>(value));
+    cart_->write16(a, hi16(value));
+    cart_->write16(a + 2, lo16(value));
   }
   cart_addr_ = a + 4;
   io_latch_ = value;
@@ -166,7 +175,7 @@ void Pi::start_dma(bool to_rdram, Tick t) {
   dma_.active = true;
   dma_.to_rdram = to_rdram;
   dma_.first = true;
-  dma_.first_index = dram_addr_ & 7;
+  dma_.first_index = misalignment(dram_addr_);
   dma_.block = 0;
   // The first block's bus time elapses before its RDRAM write.
   const u32 n = std::min<u32>(dma_.remaining, kBufferBytes);
@@ -196,17 +205,16 @@ void Pi::dma_step(Tick t) {
     const u32 len = round_odd ? (n + 1) & ~1u : n;
     const u32 fetch = (len + 1) & ~1u;
     for (u32 i = 0; i < fetch; i += 2) {
-      const u16 w = bus_read16(cart_addr_ + i);
-      buf[i] = static_cast<u8>(w >> 8);
-      buf[i + 1] = static_cast<u8>(w);
+      store_be16(buf + i, bus_read16(cart_addr_ + i));
     }
-    const u32 mis = dram_addr_ & 7;
+    const u32 mis = misalignment(dram_addr_);
     const u32 written = len > mis ? len - mis : 0;
     if (written) done = ri_.write(Master::Pi, dram_addr_, buf, written, t);
     cart_addr_ += fetch;
-    dram_addr_ = ((dram_addr_ + written + 7) & ~7u) & 0x00FF'FFFE;
+    const u32 advanced = (dram_addr_ + written + kRdramWordBytes - 1) & ~(kRdramWordBytes - 1);
+    dram_addr_ = advanced & PiDramAddr::Addr::mask;
     dma_.remaining -= std::min(dma_.remaining, n);
-    if (idx + n > 8) dma_.first = false;
+    if (idx + n > kRdramWordBytes) dma_.first = false;
     ++dma_.block;
   } else {
     // RDRAM -> cart.
@@ -215,9 +223,9 @@ void Pi::dma_step(Tick t) {
     const u32 len = (n + 1) & ~1u;
     done = ri_.read(Master::Pi, dram_addr_, buf, len, t);
     for (u32 i = 0; i < len; i += 2)
-      if (cart_) cart_->write16(cart_addr_ + i, static_cast<u16>((buf[i] << 8) | buf[i + 1]));
+      if (cart_) cart_->write16(cart_addr_ + i, load_be16(buf + i));
     cart_addr_ += len;
-    dram_addr_ = (dram_addr_ + len) & 0x00FF'FFFE;
+    dram_addr_ = (dram_addr_ + len) & PiDramAddr::Addr::mask;
     dma_.remaining -= std::min(dma_.remaining, n);
     dma_.first = false;
   }

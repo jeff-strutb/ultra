@@ -58,6 +58,9 @@ constexpr u64 sext_bits(u64 v) noexcept {
 constexpr u32 lo32(u64 v) noexcept { return static_cast<u32>(v); }
 constexpr u32 hi32(u64 v) noexcept { return static_cast<u32>(v >> 32); }
 constexpr u64 make64(u32 hi, u32 lo) noexcept { return (u64{hi} << 32) | lo; }
+constexpr u16 lo16(u32 v) noexcept { return static_cast<u16>(v); }
+constexpr u16 hi16(u32 v) noexcept { return static_cast<u16>(v >> 16); }
+constexpr u32 make32(u16 hi, u16 lo) noexcept { return (u32{hi} << 16) | lo; }
 
 // Full 128-bit products in ISO C++ (no __int128): returns the high 64 bits, `lo` gets the low.
 constexpr u64 mul_u64_wide(u64 a, u64 b, u64& lo) noexcept {
