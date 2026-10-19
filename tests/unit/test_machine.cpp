@@ -181,3 +181,28 @@ TEST_CASE("cic: 6105 challenge vectors") {
   CHECK(run("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF") == "6949A3250F49A3250F49A3250F49A3");
   CHECK(run("0123456789ABCDEF0123456789ABCD") == "B48B98AB7E8338255A29DC41F60B18");
 }
+
+TEST_CASE("cic: an IPL3 no retail CIC accepts halts the PIF unless the CIC reports its checksum") {
+  // A changed IPL3 byte, as in hwprobe-cold.z64. A console with a retail CIC halts in IPL2;
+  // SC64 direct boot programs its CIC emulation with the IPL3's own checksum and boots.
+  std::string err;
+  auto load = [&] {
+    auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
+    REQUIRE(cart);
+    std::vector<u8> rom(cart->rom().begin(), cart->rom().end());
+    rom[0xFF0] ^= 0x01;  // inside the IPL3 area (0x40-0xFFF), past its code
+    return Cartridge::from_bytes(std::move(rom));
+  };
+  System retail(SystemConfig{}, load());
+  retail.power_on();
+  retail.run_until(seconds(0.5));
+  CHECK(retail.pif().halted_cpu());
+
+  SystemConfig direct;
+  direct.cic_checksum_from_ipl3 = true;
+  System sc64(direct, load());
+  sc64.power_on();
+  sc64.run_until(seconds(0.5));
+  CHECK_FALSE(sc64.pif().halted_cpu());
+  CHECK(sc64.pif().boot_terminated());
+}

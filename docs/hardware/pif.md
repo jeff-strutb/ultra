@@ -76,3 +76,11 @@ a private contract between our PIF model and our IPL2 (ledger `pif-boot-info`).
 The Joybus frame walk: up to 5 channels; 0x00 skips a channel, 0xFD resets, 0xFE ends, 0xFF is
 a no-op; a handshake is TX, RX, TX bytes, RX bytes ([n64brew] "PIF-NUS", Joybus). No devices
 are attached in Phase 0, so every handshake reports "no device" (RX bit 7).
+
+## Flashcart CIC emulation (host option)
+
+`SystemConfig::cic_checksum_from_ipl3` makes the CIC report the IPL2 checksum of the ROM's
+own IPL3, so an IPL3 that no retail CIC accepts still boots. This models a flashcart's CIC
+emulation in direct-boot mode, not console hardware: SummerCart64 computes that checksum
+(`sw/deployer`, `sign_ipl3`) and sets it with its `CIC_PARAMS_SET` command. By default the PIF
+halts the CPU on a mismatch, as a console with a retail CIC does.

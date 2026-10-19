@@ -34,6 +34,9 @@ struct SystemConfig {
   u32 rdram_bytes = 8u << 20;      // 4 MiB console, 8 MiB with Expansion Pak
   std::optional<VideoStandard> tv;  // default: from the ROM header's region code
   std::optional<CicType> cic;       // default: detected from IPL3 like the PIF does
+  // Flashcart direct boot (SC64): the CIC emulation reports the checksum of the ROM's own
+  // IPL3, so an IPL3 no retail CIC accepts still boots. Seed from `cic` (default 6102).
+  bool cic_checksum_from_ipl3 = false;
   std::string trace_path;           // empty: no trace
 };
 

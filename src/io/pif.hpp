@@ -30,7 +30,10 @@ class Pif {
   explicit Pif(Scheduler& sched);
 
   // Power-on: loads the boot ROM image, runs the CIC handshake and publishes the boot info.
-  void power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom);
+  // `checksum` replaces the CIC's retail IPL2 checksum, as a flashcart's CIC emulation does
+  // when it is told the checksum of the ROM's own IPL3 (SC64 direct boot).
+  void power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom,
+                std::optional<u64> checksum = std::nullopt);
 
   // Word access through the SI window (address 0x000..0x7FF within the PIF).
   u32 read_word(u32 addr) const noexcept;
@@ -69,6 +72,7 @@ class Pif {
   bool boot_terminated_ = false;
   bool halt_cpu_ = false;
   u64 checksum_from_cpu_ = 0;
+  u64 expected_checksum_ = 0;  // what the CIC reports: retail, or a flashcart's override
   Event timeout_ev_;
 };
 

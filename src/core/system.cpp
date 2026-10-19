@@ -62,7 +62,12 @@ System::System(const SystemConfig& cfg, std::unique_ptr<Cartridge> cart)
 System::~System() { trace_.close(); }
 
 void System::power_on() {
-  pif_.power_on(cic_, tv_, make_pif_boot_rom());
+  std::optional<u64> checksum;
+  if (cfg_.cic_checksum_from_ipl3) {
+    const auto rom = cart_->rom();
+    if (rom.size() >= 0x1000) checksum = ipl2_checksum(rom.subspan(0x40, 0xFC0), cic_info(cic_).seed);
+  }
+  pif_.power_on(cic_, tv_, make_pif_boot_rom(), checksum);
   cpu_.cold_reset();
 }
 

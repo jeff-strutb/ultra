@@ -34,3 +34,14 @@ add_test(NAME hwprobe-record
          COMMAND Python3::Interpreter -I ${CMAKE_SOURCE_DIR}/tools/hwprobe.py dump
                  ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-emulated.sav)
 set_tests_properties(hwprobe-record PROPERTIES FIXTURES_REQUIRED hwprobe-sav LABELS rom)
+
+# The cold-boot build: its patched IPL3 boots only with a flashcart's CIC override (--direct),
+# and its full record carries the IPL3-entry capture.
+add_test(NAME hwprobe-cold
+         COMMAND ultra_harness hwprobe-full ${CMAKE_CURRENT_SOURCE_DIR}/probes/hwprobe/hwprobe-cold.z64
+                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-cold.bin --seconds 30 --direct)
+set_tests_properties(hwprobe-cold PROPERTIES FIXTURES_SETUP hwprobe-cold-bin LABELS rom)
+add_test(NAME hwprobe-cold-record
+         COMMAND Python3::Interpreter -I ${CMAKE_SOURCE_DIR}/tools/hwprobe.py dump
+                 ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-cold.bin)
+set_tests_properties(hwprobe-cold-record PROPERTIES FIXTURES_REQUIRED hwprobe-cold-bin LABELS rom)

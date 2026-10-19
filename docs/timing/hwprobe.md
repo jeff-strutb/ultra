@@ -38,16 +38,34 @@ If the screen stops on a group, the record still holds every group before it: pa
 programmed as each group finishes, and each series has its own CRC. Report the group name
 shown on the screen.
 
-**Cold boot.** For the power-on rows (`tlb-poweron`, `cop0-cause-poweron`,
-`cop0-lladdr-poweron`, `cop0-undefined-poweron`), boot the ROM with no menu code first: a
-flashcart direct-boot mode (SC64), or a cart whose menu is known not to touch the TLB. The
-record does not know how it was booted, so say which. libdragon's IPL3 runs before our first
-instruction. It writes Cause = 0, Count = 0, Compare = 0 and WatchLo = 0, and invalidates both
-caches (`third_party/libdragon/boot/ipl3.c`, `stage1()`). Only Cause's IP1:0 bits are writable,
-so its BD, CE and ExcCode fields keep their power-on values. IPL3 never touches the TLB,
-EntryHi/EntryLo, PageMask, Wired, Context, XContext, BadVAddr, EPC, ErrorEPC, LLAddr or Status.
-Count at entry is the time IPL3 took after zeroing it. The time from reset to IPL3
-(`boot-rom-timing`) is not measurable this way.
+**Cold boot: `hwprobe-cold.z64`.** The same program behind libdragon's IPL3 patched
+(`tests/probes/hwprobe/ipl3/cold-capture.patch`) to capture the CPU and RCP state at IPL3's
+first instruction, before IPL3 changes anything (series `S_BOOT_COLD`). Run it with SC64
+direct boot, so no menu code runs first:
+
+```bash
+sc64deployer upload --direct --save-type flashram tests/probes/hwprobe/hwprobe-cold.z64
+```
+
+No retail CIC accepts the patched IPL3. In direct-boot mode the SC64 programs its CIC emulation
+with the checksum of the ROM's own IPL3 (SummerCart64 `sw/deployer`, `sign_ipl3` and
+`CIC_PARAMS_SET`), so it boots. A flashcart menu or a stock cart halts it at the IPL2 check.
+
+The capture holds:
+- GPRs and HI/LO as IPL2 left them;
+- every COP0 register, including Count (so the IPL1 + IPL2 run time, `boot-rom-timing`),
+  Cause, Compare, WatchLo and Random, and the upper words of the 64-bit ones;
+- FCR0 and FCR31;
+- RI, MI, SP_STATUS, PI domain 1 timing, VI and SI as the PIF and IPL2 leave them.
+
+It runs from DMEM and stashes the capture there. Once RDRAM is up, IPL3 copies it to RDRAM
+0x200-0x37F, which IPL3's memory clear and the ELF loader both leave alone. After a RESET it
+captures again, so stage 2 also gets the state IPL3 receives after an NMI (`S_BOOT2_COLD`).
+
+`hwprobe.z64` (libdragon's stock IPL3) boots from any cart. For it, the TLB, LLAddr, EPC,
+ErrorEPC, BadVAddr, Context, XContext and Status at program entry are still the power-on
+values, and so are Cause's BD, CE and ExcCode fields: only its IP1:0 bits are writable. Count,
+Compare and WatchLo are not; IPL3 zeroes them.
 
 ## Record format (version 1)
 
@@ -270,11 +288,12 @@ The erase time and each page program time of the record writer itself.
 wall time) and writes the emulated FlashRAM. Ultra does not execute RSP microcode or RDP
 commands yet, so those runs record `HWP_TIMEOUT`; every wait on them is bounded. ctest `hwprobe-emulated` checks that the record is
 complete and every CRC holds. Ultra has no reset button yet, so stage 2 has not run in the
-emulator. Ultra starts with no controllers attached. Before comparing SI timings, configure it
+emulator. `ultra_harness hwprobe-full ROM OUT [--direct]` writes the full record; `--direct`
+boots as SC64 direct boot does, so `hwprobe-cold.z64` runs too (ctest `hwprobe-cold`). Ultra starts with no controllers attached. Before comparing SI timings, configure it
 like the console in `S_SI_RESULT`.
 
 ## Not covered
 
-`boot-rom-timing` (needs our own IPL3), `mi-ebus` (the EBus test mode is not documented
+`mi-ebus` (the EBus test mode is not documented
 well enough to drive safely), PAL timing (needs a PAL console), RDP pixel output (Angrylion is
 the oracle for that), and the bus-capture residuals (logic analyzer).

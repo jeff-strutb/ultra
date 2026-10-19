@@ -15,6 +15,7 @@
 #define S_BOOT_RCP        0x0105 // 4 MI 0..3, VI 0..13, AI 0..5, PI 0..12, RI 0..7, SI DRAM_ADDR, SI STATUS, SP STATUS, SP DMA_FULL, SP DMA_BUSY, SP PC
 #define S_BOOT_RDRAM      0x0106 // 4 per RDRAM device id 0, 2, 4 ... (to memsize): registers 0..9 (DeviceType, DeviceId, Delay, Mode, RefInterval, RefRow, RasInterval, MinInterval, AddressSelect, DeviceManufacturer)
 #define S_BOOT_FLAGS      0x0107 // 4 memsize, tvtype, resettype, consoletype, stage, 0xA0000380..0xA00003BC (16 words)
+#define S_BOOT_COLD       0x0108 // 4 only from hwprobe-cold.z64: the CPU/RCP state at IPL3's first instruction (ipl3/cold-capture.patch): "HWC0", r1..r31 low words (k0 = 0), HI, LO, COP0 0..31 low words, upper words of BadVAddr EPC ErrorEPC XContext Context EntryHi, FCR31, FCR0, RI 0..7, MI 0..3, SP_STATUS, PI_BSD_DOM1 LAT PWD PGS RLS, PI_STATUS, VI_CTRL, VI_V_CURRENT, SI_STATUS, Count at the end of the capture
 #define S_BOOT2_GPR       0x0200 // 8 as S_BOOT_GPR, after the soft reset
 #define S_BOOT2_COP0      0x0201 // 8 as S_BOOT_COP0
 #define S_BOOT2_FCR       0x0202 // 4 as S_BOOT_FCR
@@ -23,6 +24,7 @@
 #define S_BOOT2_RCP       0x0205 // 4 as S_BOOT_RCP
 #define S_BOOT2_RDRAM     0x0206 // 4 as S_BOOT_RDRAM
 #define S_BOOT2_FLAGS     0x0207 // 4 as S_BOOT_FLAGS
+#define S_BOOT2_COLD      0x0208 // 4 as S_BOOT_COLD: the state IPL3 received after the soft reset
 #define S_NMI_TLB_PATTERN 0x0210 // 8 the 32 x 4 TLB words stage 1 wrote before waiting for RESET
 #define S_NMI_WAIT_LOOP   0x0211 // 4 virtual address of the wait loop's first instruction, its length in bytes
 #define S_NMI_TLB_READBACK 0x0212 // 8 TLBR of all 32 entries right after writing S_NMI_TLB_PATTERN (stage 1, after the TLB shutdown group)

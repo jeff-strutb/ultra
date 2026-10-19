@@ -11,6 +11,11 @@ extern int __boot_memsize, __boot_tvtype, __boot_resettype, __boot_consoletype;
 static uint32_t rcp_snapshot[64];
 static uint32_t rcp_n;
 static uint32_t low_snapshot[16];
+// The cold-boot capture written by the patched IPL3 of hwprobe-cold.z64 (ipl3/), at RDRAM
+// 0x200-0x37F with "HWC0" in word 0. Cleared once read, so that a later boot through an IPL3
+// that does not write it cannot be mistaken for a fresh capture.
+static uint32_t cold_capture[96];
+static bool cold_present;
 
 static void snap(uint32_t base, int n) {
   for (int i = 0; i < n; ++i) rcp_snapshot[rcp_n++] = ((volatile uint32_t*)base)[i];
@@ -30,6 +35,10 @@ void hwp_snapshot_early(void) {
   rcp_snapshot[rcp_n++] = *(volatile uint32_t*)0xA4040018u;  // SP_DMA_BUSY
   rcp_snapshot[rcp_n++] = *(volatile uint32_t*)0xA4080000u;  // SP_PC
   for (int i = 0; i < 16; ++i) low_snapshot[i] = ((volatile uint32_t*)0xA0000380u)[i];
+  volatile uint32_t* cold = (volatile uint32_t*)0xA0000200u;
+  cold_present = cold[0] == 0x48574330u;  // "HWC0"
+  for (int i = 0; i < 96; ++i) cold_capture[i] = cold[i];
+  cold[0] = 0;
 }
 
 void grp_boot(void* unused) {
@@ -59,4 +68,5 @@ void grp_boot(void* unused) {
   flags[4] = (uint32_t)hwp_stage;
   memcpy(flags + 5, low_snapshot, sizeof low_snapshot);
   rec_series(b | 0x07, 4, 21, flags);
+  if (cold_present) rec_series(b | 0x08, 4, 96, cold_capture);
 }

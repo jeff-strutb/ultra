@@ -1,0 +1,167 @@
+diff -ruN -x b orig/Makefile cold/Makefile
+--- orig/Makefile	2026-10-19 14:58:50
++++ cold/Makefile	2026-10-19 15:00:17
+@@ -37,7 +37,7 @@
+ N64_RSPASFLAGS = -march=mips1 -mabi=32 -Wa,--fatal-warnings
+ N64_LDFLAGS = -Wl,-T$(IPL3_LDSCRIPT) -Wl,-Map=build/ipl3.map -Wl,--gc-sections
+ 
+-OBJS = build/ipl3.o build/minidragon.o build/rdram.o build/ique_trampoline.o build/entropy.o
++OBJS = build/ipl3.o build/minidragon.o build/rdram.o build/ique_trampoline.o build/entropy.o build/cold_capture.o
+ 
+ ifeq ($(PROD),1)
+ OBJS += build/loader.o 
+diff -ruN -x b orig/cold_capture.S cold/cold_capture.S
+--- orig/cold_capture.S	1969-12-31 17:00:00
++++ cold/cold_capture.S	2026-10-19 14:59:41
+@@ -0,0 +1,112 @@
++# Ultra hwprobe cold-boot capture: the first code IPL3 runs. Records the CPU and RCP state
++# exactly as IPL2 hands it over, before anything in IPL3 changes it, into hwp_cold (DMEM).
++# stage1() copies it to RDRAM 0xA0000200 once RDRAM is up (ipl3.c), where hwprobe reads it.
++# Layout (96 words): docs/timing/hwprobe.md, "Cold-boot capture". k0 is lost (word 26 = 0).
++
++	.set noreorder
++	.set noat
++	.set mips3
++	.set gp=64
++
++	.section .bss
++	.balign 8
++	.global hwp_cold
++hwp_cold:
++	.space 384
++
++	.section .stage0, "ax"
++	.global hwp_cold_capture
++hwp_cold_capture:
++	lui   $26, %hi(hwp_cold)
++	addiu $26, $26, %lo(hwp_cold)
++	sw    $27, 4*27($26)
++	mfc0  $27, $9              # Count, as early as possible
++	sw    $27, 136 + 4*9($26)
++	.irp  r, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,28,29,30,31
++	sw    $\r, 4*\r($26)
++	.endr
++	sw    $0, 4*26($26)
++	mfhi  $27
++	sw    $27, 128($26)
++	mflo  $27
++	sw    $27, 132($26)
++	.irp  n, 0,1,2,3,4,5,6,7,8,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
++	mfc0  $27, $\n
++	sw    $27, 136 + 4*\n($26)
++	.endr
++	# Upper words of the 64-bit registers: BadVAddr, EPC, ErrorEPC, XContext, Context, EntryHi.
++	addiu $1, $26, 264
++	dmfc0 $27, $8
++	dsrl32 $27, $27, 0
++	sw    $27, 0($1)
++	dmfc0 $27, $14
++	dsrl32 $27, $27, 0
++	sw    $27, 4($1)
++	dmfc0 $27, $30
++	dsrl32 $27, $27, 0
++	sw    $27, 8($1)
++	dmfc0 $27, $20
++	dsrl32 $27, $27, 0
++	sw    $27, 12($1)
++	dmfc0 $27, $4
++	dsrl32 $27, $27, 0
++	sw    $27, 16($1)
++	dmfc0 $27, $10
++	dsrl32 $27, $27, 0
++	sw    $27, 20($1)
++	# FCR31 and FCR0, with CU1 set only for the reads.
++	mfc0  $27, $12
++	lui   $1, 0x2000
++	or    $1, $27, $1
++	mtc0  $1, $12
++	nop
++	nop
++	nop
++	nop
++	cfc1  $1, $31
++	sw    $1, 288($26)
++	cfc1  $1, $0
++	sw    $1, 292($26)
++	mtc0  $27, $12
++	nop
++	nop
++	nop
++	nop
++	# RCP state before IPL3 touches it.
++	lui   $27, 0xA470          # RI 0x00..0x1C
++	.irp  i, 0,1,2,3,4,5,6,7
++	lw    $1, 4*\i($27)
++	sw    $1, 296 + 4*\i($26)
++	.endr
++	lui   $27, 0xA430          # MI 0x00..0x0C
++	.irp  i, 0,1,2,3
++	lw    $1, 4*\i($27)
++	sw    $1, 328 + 4*\i($26)
++	.endr
++	lui   $27, 0xA404
++	lw    $1, 0x10($27)        # SP_STATUS
++	sw    $1, 344($26)
++	lui   $27, 0xA460          # PI_BSD_DOM1 LAT, PWD, PGS, RLS, then PI_STATUS
++	lw    $1, 0x14($27)
++	sw    $1, 348($26)
++	lw    $1, 0x18($27)
++	sw    $1, 352($26)
++	lw    $1, 0x1C($27)
++	sw    $1, 356($26)
++	lw    $1, 0x20($27)
++	sw    $1, 360($26)
++	lw    $1, 0x10($27)
++	sw    $1, 364($26)
++	lui   $27, 0xA440
++	lw    $1, 0x00($27)        # VI_CTRL
++	sw    $1, 368($26)
++	lw    $1, 0x10($27)        # VI_V_CURRENT
++	sw    $1, 372($26)
++	lui   $27, 0xA480
++	lw    $1, 0x18($27)        # SI_STATUS
++	sw    $1, 376($26)
++	mfc0  $1, $9               # Count at the end of the capture
++	sw    $1, 380($26)
++	lw    $1, 4*1($26)         # restore $at and k1; IPL3 reads s3-s7, which were not touched
++	lw    $27, 4*27($26)
++	# falls through into stage1pre (linker script)
+diff -ruN -x b orig/ipl3.c cold/ipl3.c
+--- orig/ipl3.c	2026-10-19 14:58:50
++++ cold/ipl3.c	2026-10-19 14:59:41
+@@ -345,6 +345,16 @@
+     *PI_DRAM_ADDR = (uint32_t)rdram_stage2;
+     *PI_CART_ADDR = (uint32_t)stage2_start - 0xA0000000;
+     while (*SP_DMA_BUSY) {}         // Make sure RDRAM clearing is finished before reading data
++
++    // Ultra hwprobe: publish the cold-boot capture (cold_capture.S) at RDRAM 0x200-0x37F, which
++    // the RDRAM clear above skips (warm boot) or has finished with (cold boot), and which the
++    // ELF loader does not write (libdragon's vectors end below 0x200).
++    {
++        extern uint32_t hwp_cold[96];
++        volatile uint32_t *dst = (volatile uint32_t *)0xA0000200;
++        for (int i = 1; i < 96; i++) dst[i] = hwp_cold[i];
++        dst[0] = 0x48574330;  // "HWC0"
++    }
+     *PI_WR_LEN = stage2_size-1;
+ 
+     // Clear D/I-cache, useful after warm boot. Maybe not useful for cold
+diff -ruN -x b orig/ipl3_prod.ld cold/ipl3_prod.ld
+--- orig/ipl3_prod.ld	2026-10-19 14:58:50
++++ cold/ipl3_prod.ld	2026-10-19 14:59:41
+@@ -15,6 +15,7 @@
+     .text.dmem 0xA4000000 : {
+         KEEP(*(.header))
+         LONG(0x3044d236);  /* special dummy opcode to simplify hash cracking */
++        KEEP(*(.stage0))   /* Ultra hwprobe: cold-boot capture, falls through */
+         KEEP(*(.stage1.pre))
+         KEEP(*(.stage1))
+         . = ALIGN(16);
+@@ -23,6 +24,7 @@
+         build/rdram.o      (.text .text.* .data .rodata .rodata.*)
+         build/minidragon.o (.text .text.* .data .rodata .rodata.*)
+         build/entropy.o    (.text .text.* .data .rodata .rodata.*)
++        build/cold_capture.o (.text .text.* .data .rodata .rodata.*)
+         *(.bss)
+     } > dmem
+ 

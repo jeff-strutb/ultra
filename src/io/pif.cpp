@@ -28,8 +28,10 @@ Pif::Pif(Scheduler& sched) : sched_(sched) {
   sched_.add(timeout_ev_, "pif.boot_timeout", &Pif::timeout_event, this);
 }
 
-void Pif::power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom) {
+void Pif::power_on(CicType cic, VideoStandard tv, std::vector<u32> boot_rom,
+                   std::optional<u64> checksum) {
   cic_ = cic;
+  expected_checksum_ = checksum.value_or(cic_info(cic).ipl2_checksum);
   rom_.fill(0);
   for (usize i = 0; i < boot_rom.size() && (i + 1) * 4 <= kRomBytes; ++i)
     store_be32(rom_.data() + i * 4, boot_rom[i]);
@@ -90,7 +92,7 @@ void Pif::process_command(Tick) {
     }
     if (cmd & kCmdRunChecksum) {
       // A wrong IPL3 checksum halts the CPU until power off.
-      if (checksum_from_cpu_ != cic_info(cic_).ipl2_checksum) halt_cpu_ = true;
+      if (checksum_from_cpu_ != expected_checksum_) halt_cpu_ = true;
       cmd = static_cast<u8>(cmd & ~kCmdRunChecksum);
     }
     if (cmd & kCmdLockout) {
@@ -153,7 +155,7 @@ void Pif::on_timeout(Tick) {
 }
 
 void Pif::serialize(SaveState& s) {
-  s.section("pif", 1);
+  s.section("pif", 2);
   s.array(ram_);
   s.array(rom_);
   s.value(cic_);
@@ -161,6 +163,7 @@ void Pif::serialize(SaveState& s) {
   s.value(boot_terminated_);
   s.value(halt_cpu_);
   s.value(checksum_from_cpu_);
+  s.value(expected_checksum_);
 }
 
 }  // namespace ultra

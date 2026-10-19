@@ -16,9 +16,10 @@
 //   ultra_harness hwprobe ROM SAV [--seconds S] [--log FILE]
 //       Runs tests/probes/hwprobe headless until its stage 1 record is written, then writes the
 //       emulated FlashRAM (128 KiB, as a flashcart's .sav) to SAV. docs/timing/hwprobe.md.
-//   ultra_harness hwprobe-full ROM OUT [--seconds S]
+//   ultra_harness hwprobe-full ROM OUT [--seconds S] [--direct]
 //       Runs hwprobe stage 1 headless and writes its full record (the file a flashcart's SD
-//       card receives) to OUT.
+//       card receives) to OUT. --direct boots as SC64 direct boot does: the CIC reports the
+//       checksum of the ROM's own IPL3 (needed for hwprobe-cold.z64).
 //   ultra_harness manifest FILE [--rom-dir DIR] [--allow-missing]
 //       Runs every entry of a manifest and checks the outcome against its expectation
 //       (pass / fail). An unexpected pass fails just like an unexpected failure, so the
@@ -58,10 +59,11 @@ struct Outcome {
   std::string detail;
 };
 
-std::unique_ptr<System> boot(const std::string& rom, std::string& err) {
+std::unique_ptr<System> boot(const std::string& rom, std::string& err, bool direct = false) {
   auto cart = Cartridge::load(rom, &err);
   if (!cart) return nullptr;
   SystemConfig cfg;
+  cfg.cic_checksum_from_ipl3 = direct;
   auto sys = std::make_unique<System>(cfg, std::move(cart));
   sys->power_on();
   return sys;
@@ -142,9 +144,10 @@ Outcome run_screen(const std::string& rom, const std::string& png, double second
 // Collects hwprobe's full record (docs/timing/hwprobe.md, "Full record"): the ROM streams it
 // over the ISViewer port as "HWPX D <hex>" lines, then "HWPX H <hex>" for the header and
 // "HWPX END <stage>". Output is drained as it arrives, so the record has no size limit.
-Outcome run_hwprobe_full(const std::string& rom, const std::string& out_path, double seconds) {
+Outcome run_hwprobe_full(const std::string& rom, const std::string& out_path, double seconds,
+                         bool direct) {
   std::string err;
-  auto sys = boot(rom, err);
+  auto sys = boot(rom, err, direct);
   if (!sys) return {false, err};
   const Tick limit = static_cast<Tick>(seconds * static_cast<double>(kRcpClockHz));
   const Tick step = kRcpClockHz / 100;
@@ -362,7 +365,10 @@ double opt_seconds(int argc, char** argv, double def) {
 
 int main(int argc, char** argv) {
   if (argc >= 4 && std::string(argv[1]) == "hwprobe-full") {
-    Outcome o = run_hwprobe_full(argv[2], argv[3], opt_seconds(argc, argv, 60));
+    bool direct = false;
+    for (int i = 4; i < argc; ++i)
+      if (std::string(argv[i]) == "--direct") direct = true;
+    Outcome o = run_hwprobe_full(argv[2], argv[3], opt_seconds(argc, argv, 60), direct);
     std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
     return o.pass ? 0 : 1;
   }
