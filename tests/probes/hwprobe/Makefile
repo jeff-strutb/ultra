@@ -15,7 +15,7 @@ CFLAGS += -DHWP_BUILD_ID=\"$(BUILD_ID)\" -Wall -Werror -O2
 LDFLAGS += -e hwp_entry
 
 SRCS := main.c boot.c loops.c record.c flash.c pi.c display.c vectors.c probes.c probes2.c sink.c cpu_func.c \
-        rdp_render.c rsp_func.c \
+        rdp_render.c rsp_func.c peripherals.c \
         entry.S exc.S loops_asm.S probes_asm.S probes2_asm.S cpu_func_asm.S rsp_probe.S rsp_func_ucode.S
 OBJS := $(addprefix $(BUILD_DIR)/,$(patsubst %.S,%.o,$(SRCS:.c=.o)))
 

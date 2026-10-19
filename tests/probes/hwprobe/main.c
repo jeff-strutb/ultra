@@ -34,6 +34,7 @@ static const hwp_group_t stage1_groups[] = {
     {0xA0, "CPU/FPU functional", grp_cpu_func},
     {0x80, "RDP render matrix", grp_rdp_render},
     {0x90, "RSP functional sweep", grp_rsp_func},
+    {0xB0, "peripherals", grp_peripherals},
     {0x55, "TLB shutdown", grp_tlb_shutdown},  // last: may disable the TLB until reset
 };
 static const hwp_group_t stage2_groups[] = {
@@ -48,7 +49,9 @@ static int ngroups, nfaults;
 static void run_groups(const hwp_group_t* g, int n, int first_row) {
   for (int i = 0; i < n; ++i) {
     hwp_screen_show();
-    hwp_print(first_row + i, "%-24s ...", g[i].name);
+    // Two columns of 12 groups.
+    const int row = first_row + i % 12, col = i / 12;
+    hwp_print_col(row, col, "%-15.15s ..", g[i].name);
     hwp_exc_reset(HWP_EXPECT_NONE);
     const uint32_t faults0 = hwp_exc.faults;
     const uint32_t t0 = c0_count();
@@ -67,9 +70,9 @@ static void run_groups(const hwp_group_t* g, int n, int first_row) {
       f[3] = (uint32_t)hwp_exc.badvaddr;
       f[4] = hwp_exc.status;
       if (nfaults < 23) ++nfaults;
-      hwp_print(first_row + i, "%-24s FAULT %08lx", g[i].name, (unsigned long)hwp_exc.cause);
+      hwp_print_col(row, col, "%-15.15s FAIL", g[i].name);
     } else {
-      hwp_print(first_row + i, "%-24s ok", g[i].name);
+      hwp_print_col(row, col, "%-15.15s ok", g[i].name);
     }
     rec_flush();
   }
@@ -169,8 +172,8 @@ int main(void) {
     sink_open(1, hwp_sd, hwp_isviewer);
     run_groups(stage1_groups, sizeof stage1_groups / sizeof stage1_groups[0], 3);
     tlb_pattern();
-    finish(22);
-    hwp_print(25, "STAGE 1 DONE. PRESS RESET.");
+    finish(16);
+    hwp_print(20, "STAGE 1 DONE. PRESS RESET.");
     *HWP_LOW_PRENMI = 0;
     *HWP_LOW_PRENMI_N = 0;
     *HWP_LOW_LASTCOUNT = 0;
@@ -183,11 +186,11 @@ int main(void) {
     rec_begin(2, id);
     sink_open(2, hwp_sd, hwp_isviewer);
     run_groups(stage2_groups, sizeof stage2_groups / sizeof stage2_groups[0], 3);
-    finish(22);
-    hwp_print(25, "ALL DONE. PRESS RESET, THEN POWER OFF.");
+    finish(16);
+    hwp_print(20, "ALL DONE. PRESS RESET, THEN POWER OFF.");
   } else {
     hwp_print(1, "both stages are recorded");
-    hwp_print(25, "ALL DONE. POWER OFF AND SEND THE SAVE.");
+    hwp_print(20, "ALL DONE. POWER OFF AND SEND THE SAVE.");
   }
   for (;;) {}
 }

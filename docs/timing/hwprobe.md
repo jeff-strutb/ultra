@@ -421,6 +421,47 @@ initial pattern.
 
 Not captured: the 16 bpp hidden (9th-bit) coverage bits, which the CPU cannot read; the
 memory-coverage blender cases show them indirectly.
+### Peripherals [0xB0] → `si-pif`, `ai-fetch`, `ai-status-count`; oracle for SI, PIF and accessories
+
+`peripherals.c`. Everything goes through raw SI DMA to PIF RAM (64-byte write, then the
+64-byte read during which the PIF runs the frame, n64brew "PIF-NUS"). Every SI and AI wait is
+bounded (10 ms per SI DMA), so a missing device or a stuck PIF ends the group, not the run.
+Plug in whatever should be documented before booting: the first series records what answered.
+
+- **Joybus commands, one per frame.** On each controller port: info (0x00), read buttons
+  (0x01), read accessory (0x02) at every address below, the same read with its address check
+  bits wrong followed by info (status bit 2 reports the CRC error), twelve unknown command
+  bytes (0x04 0x06 0x07 0x09 0x10 0x14 0x20 0x41 0x7F 0x80 0xA5 0xFE), reset (0xFF), info. On
+  the cartridge port (channel 4): info, reset, EEPROM read of blocks 0 and 1 (0x04), RTC info
+  (0x06), RTC read of blocks 0-2 (0x07), unknown 0x01 0x09 0x7F. The full record keeps the
+  frame written, PIF RAM read back (rx error bits included), both DMA times and SI_STATUS;
+  FlashRAM keeps the rx byte as returned, the first three response bytes and the read time.
+- **Accessory identification, read only.** Addresses 0x0000-0x00E0 (Controller Pak page 0:
+  ID and label), 0x8000 (Rumble/Transfer Pak identification and power), 0xA000 and 0xB000
+  (Transfer Pak bank and status), 0xC000 and 0xE000 (Rumble motor, Game Boy window), with the
+  5-bit address check (x^5 + x^4 + x^2 + 1 over address bits 15:5, n64brew "Joybus Protocol";
+  checked in Python against polynomial division). The usual Rumble Pak identification writes
+  0x80 to 0x8000 first; that write is left out, so a Rumble Pak's reads document its
+  uninitialised state.
+- **Timing spread.** Info and buttons on channels 0-4, 16 times each (full record).
+- **AI FIFO.** 2 KiB buffers of silence at 44.1 kHz with the DMA enabled. Three runs: A, B and
+  a third buffer C queued at once (both FIFO slots, and a write while full); B queued when
+  AI_LEN first reads below half of A; B queued 2 ms after the AI goes idle (underrun and
+  restart). Each run logs every change of (AI_LEN, AI_STATUS, MI_INTR AI bit) with Count, and
+  clears the AI interrupt whenever it is seen, so each rise is a separate event. FlashRAM keeps
+  AI_STATUS/AI_LEN right after each queueing and the first 12 status or interrupt changes.
+- **PIF RAM frame edge cases**, last because the PIF may handle them badly: control byte 0;
+  0x00 skips (leading and between commands); 0xFF pads; 0xFD first and between commands; a
+  command after 0xFE; four commands with no 0xFE (rest 0x00, rest 0xFF); six commands (channel
+  limit); tx bytes 0x81, 0x41, 0xC1, 0x40; rx bytes preset 0x83 and 0x43; rx 1, 8 and 0 for
+  info; tx 3 and tx 32 for info; rx 32 for info; all 0xFF; all 0x00 with control 1 and with
+  control 0; then a normal four-port frame. Each frame is read back twice with no write
+  between, so the record shows whether a second read runs the frame again.
+
+Safety: no command that writes is ever sent (0x03, 0x05, 0x08, 0x0A-0x0D, 0x13, 0x15 are
+excluded), so a Controller Pak, EEPROM or RTC is never written, and the PIF control byte is
+only ever 0x00 or 0x01. Oversize lengths stop at 32 bytes so no response can reach the control
+byte. In Ultra no device is attached: every handshake returns rx bit 7.
 
 ### FlashRAM [0x7F] → `flash-op-time`
 

@@ -117,6 +117,7 @@ static inline uint32_t c0_count(void) {
 void hwp_screen_init(void);
 void hwp_screen_show(void); // reprogram the VI for the text screen
 void hwp_print(int row, const char* fmt, ...);
+void hwp_print_col(int row, int col, const char* fmt, ...);  // half-width cell, col 0 or 1
 void hwp_vi_mode(int mode);       // HWP_VI_*: program the VI for a timing mode
 void hwp_vi_regs(int mode, uint32_t out[14]);
 void hwp_wait_vblank(void);
@@ -150,6 +151,7 @@ void grp_vi_hsync(void*);
 void grp_cpu_func(void*);
 void grp_rdp_render(void*);
 void grp_rsp_func(void*);
+void grp_peripherals(void*);
 
 extern int hwp_stage;
 extern uint32_t hwp_memsize;

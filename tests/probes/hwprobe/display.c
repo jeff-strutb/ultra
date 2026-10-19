@@ -109,3 +109,16 @@ void hwp_print(int row, const char* fmt, ...) {
   graphics_draw_text(&text_surf, 12, 6 + row * 9, line);
   debugf("%s\n", line);
 }
+
+// Half-width cell (20 characters) at column 0 or 1, for the two-column group list.
+void hwp_print_col(int row, int col, const char* fmt, ...) {
+  char line[24];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(line, sizeof line, fmt, ap);
+  va_end(ap);
+  line[20] = 0;
+  graphics_draw_box(&text_surf, col * 160, 6 + row * 9, 160, 9, graphics_make_color(0, 0, 0, 255));
+  graphics_draw_text(&text_surf, 4 + col * 160, 6 + row * 9, line);
+  debugf("%s\n", line);
+}
