@@ -9,6 +9,27 @@ namespace ultra::timing {
 // An exception stalls the pipeline 2 PCycles before the abort.
 // Derived: VR4300 manual 4.7 "Pipeline Exceptions".
 inline constexpr u64 kExceptionAbortCycles = 2;
+// After the abort stall the handler's first instruction takes IC, then RF (manual 4.1, Figure
+// 4-2), so it reaches RF this many PCycles after the stall. Derived; whether its IC overlaps
+// the second stall cycle is unmeasured: ledger "exception-redirect-cycle".
+inline constexpr u64 kExceptionRefetchCycles = 2;
+// Cycles from the start of the excepting instruction's EX cycle to the end of the cycle in
+// which each stage detects an exception (Figure 4-12): RF one cycle earlier, DC one later.
+// Derived: manual 4.1 (one stage per PCycle) and Figure 4-12.
+inline constexpr u64 kDcDetectAfterEx = 1;
+
+// A delay slot killed after it was fetched (branch-likely not taken, the slot after ERET)
+// still passes through the pipeline as a bubble. Derived: manual 4.2 (the slot is fetched
+// before the branch resolves in EX) and ERET's description (16, "does not execute the
+// instruction in the delay slot").
+inline constexpr u64 kKilledSlotCycles = 1;
+
+// Instruction micro-TLB miss, refilled from the joint TLB: 3 PCycles in RF.
+// Derived: VR4300 manual 4.6.2 "Instruction TLB Miss (ITM)"; 2 entries, LRU, 4 KiB pages:
+// 1.5.1 "Instruction Micro-TLB (ITLB)".
+inline constexpr u64 kItlbMissCycles = 3;
+inline constexpr u32 kItlbEntries = 2;
+inline constexpr u32 kItlbPageShift = 12;
 
 // A store into the D-cache keeps it busy in its WB stage; a following D-cache access stalls 1.
 // Derived: VR4300 manual Table 3-1 / 4.6.7 "Data Cache Busy".

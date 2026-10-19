@@ -2,12 +2,14 @@
 // NEC VR4300 interpreter with a pipeline timing model.
 // Facts and sources: docs/hardware/cpu.md. Manual: NEC VR4300 User's Manual U10504EJ7V0UM00.
 //
-// Execution model: one instruction retires per step(). Its cost in PCycles is 1 plus every
-// stall the five-stage pipeline would take for it: instruction fetch (I-cache miss / uncached
-// fetch through SysAD), multicycle interlocks (MCI), load interlocks (LDI), data cache misses
-// and busy cycles (DCM/DCB), FPU latencies and the DC->EX bypass stall, exception aborts.
-// Bus transactions are issued at MasterClock edges and the CPU resumes at the first PCycle
-// after completion, so all timing is integer and deterministic.
+// Execution model (docs/adr/0005-cpu-pipeline-stages.md): one instruction executes per step(),
+// in program order. Time is accounted by pipeline stage. Step i spends one run cycle (i in
+// EX), i's EX interlocks (LDI, MCI, FPU bypass), then the RF fetch of instruction i+1 (I-cache
+// miss, uncached fetch, micro-TLB miss), then i's DC work (D-cache miss/busy, SysAD
+// transactions). Stalls of one pipeline cycle combine by the manual's rules: the RF fetch
+// overlaps i's EX interlocks, and i's MCI overlaps i-1's DC stall. Exceptions cost by the
+// stage that detects them. Bus transactions are issued at MasterClock edges and the CPU
+// resumes at the first PCycle after completion, so all timing is integer and deterministic.
 
 #include <array>
 
@@ -16,6 +18,7 @@
 #include "core/clock.hpp"
 #include "core/cpu_pins.hpp"
 #include "cpu/cop0_regs.hpp"
+#include "cpu/timing.hpp"
 
 namespace ultra {
 
@@ -53,6 +56,7 @@ class Vr4300 {
     npc_ = pc + 4;
     in_delay_slot_ = false;
     branch_pending_ = false;
+    fetch_latch_.valid = false;
   }
   u64 hi() const noexcept { return hi_; }
   u64 lo() const noexcept { return lo_; }
@@ -184,8 +188,26 @@ class Vr4300 {
   void drain_write_buffer();
   void stall_until_tick(Tick done);
 
-  // Exceptions.
+  // Pipeline stages (docs/adr/0005-cpu-pipeline-stages.md).
+  enum class Stage : u8 { RF, EX, DC, Interrupt };
+  static Stage stage_of(cop0::ExcCode code) noexcept;
+  // Issues the RF fetch of the instruction behind the executing one into fetch_latch_. It starts
+  // at the run cycle, so its stall overlaps the EX interlocks already charged.
+  void rf_fetch();
+  // Marks the start of the executing instruction's DC stage; issues the RF fetch first.
+  void dc_stage();
+  // Multicycle interlock of `extra` PCycles beyond the run cycle (manual 4.6.4).
+  void mci(u64 extra);
+  // Charges the time from detection in `stage` until the handler's first instruction is in RF.
+  void exception_timing(Stage stage);
+  // Micro-TLB lookup for a fetch translated by the joint TLB; charges ITM on a miss.
+  void itlb_access(u64 vaddr);
+  void itlb_flush() noexcept;
+  void set_entry_hi(u64 v) noexcept;
+
+  // Exceptions. `stage` defaults to the stage that detects `code` (Figure 4-12).
   void raise(cop0::ExcCode code, u32 ce = 0);
+  void raise_in(cop0::ExcCode code, u32 ce, Stage stage);
   // Cause.CE for an exception raised by CTC1: from the instruction behind it.
   u32 next_instr_cop();
   void raise_address_error(u64 vaddr, Access acc);
@@ -306,6 +328,31 @@ class Vr4300 {
   u32 cur_load_reg_ = 0;
   bool prev_dcache_store_ = false;  // previous instruction stored into the D-cache
   bool cur_dcache_store_ = false;
+  // Pipeline stage bookkeeping (ADR 0005). The latch holds the instruction fetched in RF while
+  // the previous one was in EX; `ok` false means that fetch faulted, and the instruction's own
+  // step fetches again and raises the fault in program order.
+  struct FetchLatch {
+    u64 vaddr = 0;
+    u32 instr = 0;
+    bool valid = false;
+    bool ok = false;
+  };
+  FetchLatch fetch_latch_{};
+  u64 next_fetch_vaddr_ = 0;     // the instruction behind the executing one, in fetch order
+  bool rf_fetch_done_ = true;    // this step issued (or an EX exception cancelled) the RF fetch
+  bool dc_started_ = false;      // this step reached its DC stage
+  CpuCycle run_cycle_ = 0;       // end of the executing instruction's run (EX) cycle
+  CpuCycle dc_begin_ = 0;        // start of its DC stage
+  CpuCycle prev_dc_stall_ = 0;   // DC stall cycles of the previous instruction
+  bool prev_ended_in_stall_ = false;  // the PCycle before this step boundary was a stall
+  bool load_use_ = false;        // the executing instruction waits for the previous load (LDI)
+  bool kill_slot_ = false;       // the executing instruction kills its fetched delay slot
+  // Instruction micro-TLB: 4 KiB virtual pages (vaddr >> 12), most recently used first.
+  struct ItlbEntry {
+    u64 vpage = 0;
+    bool valid = false;
+  };
+  std::array<ItlbEntry, timing::kItlbEntries> itlb_{};
   s32 fpu_result_reg_ = -1;         // FPR written by the previous FPU computational op
   s32 cur_fpu_result_reg_ = -1;
   // Write buffer (VR4300 manual 4.9): up to four pending SysAD writes. Each is presented to

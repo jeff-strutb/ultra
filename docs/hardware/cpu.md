@@ -38,8 +38,43 @@ SR and keep the other registers. Undefined power-on values are ledger entries
 
 ## Pipeline timing model
 
-The interpreter executes one instruction per step and charges PClocks for the stalls the
-five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruction, plus:
+The interpreter executes one instruction per step, in program order, and accounts for time by
+pipeline stage (IC RF EX DC WB; ADR 0005). In one pipeline cycle DC holds instruction i-1, EX
+holds i and RF holds i+1 ([UM] 4.1, Figure 4-2). So a step for i spends:
+
+1. one run cycle (i in EX);
+2. i's EX interlocks: LDI, MCI, the FPU bypass stall;
+3. the RF fetch of i+1: I-cache refill, uncached fetch, micro-TLB miss. It starts at the run
+   cycle, so its cost overlaps step 2 ([UM] 4.7.3: RF and EX interlocks are resolved at the same
+   time). The fetched word waits in a one-entry latch for the next step;
+4. i's DC work: translation, D-cache, SysAD.
+
+Hence:
+
+- **Fetch order.** i+1's instruction fetch reaches the bus before i's data access. A DC stall is
+  resolved before a simultaneous RF stall ([UM] 4.7.3), which is the order of i-1's DC (in its
+  own step) and i+1's RF.
+- **MCI overlaps the previous DC stall.** EX completes a multicycle instruction while DC resolves
+  a stall, unless it uses that load's result ([UM] 4.6.1). A pipeline cycle's stall is therefore
+  `max(MCI, DC + RF)`.
+- **Exceptions cost by stage** (Figure 4-12): RF detects instruction address, TLB and bus
+  errors; EX detects SYSCALL, BREAK, coprocessor unusable and reserved instruction; DC detects
+  the rest, interrupts included. After the detection cycle the pipeline stalls 2 PCycles and the
+  excepting and younger instructions are aborted ([UM] 4.7). The handler then takes IC and RF.
+  From the start of the excepting instruction's step that is 4 (RF), 5 (EX) or 6 (DC)
+  PCycles, plus the DC stage's own stalls before detection. The IC/stall overlap is ledgered
+  (`exception-redirect-cycle`).
+  - An EX exception outranks LDI ([UM] 4.7.7). It cancels i+1's fetch, which then makes no
+    memory request ([UM] 4.7.3).
+  - A fetch fault found by the early fetch is raised by that instruction's own step, in program
+    order.
+  - An interrupt is detected in the cycle after a step boundary. It is accepted only after a run
+    cycle, so it is one cycle later when the previous cycle stalled ([UM] 4.7.1).
+- **Killed delay slots cost a cycle.** A branch-likely not taken nullifies a slot that was
+  already fetched; ERET does not execute the instruction behind it ([UM] 4.2, chapter 16 ERET).
+- CP0I ([UM] 4.6.9) is not modelled (ledger `cp0-bypass-interlock`).
+
+Stall amounts:
 
 | Stall | Cycles | Source |
 |---|---|---|
@@ -50,7 +85,9 @@ five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruct
 | FPU result used by the next FPU instruction | +1 | [UM] 7.5.6 / Table 7-14 note 1 |
 | Store followed by a D-cache access | 1 | [UM] 4.6.7 |
 | D-cache CACHE op | 1 extra (2 total) | [UM] 4.6.8 |
-| Exception | 2 | [UM] 4.7 |
+| Exception abort stall, then the handler's IC and RF | 2 + 2 after the detection cycle | [UM] 4.7, 4.1 |
+| Instruction micro-TLB miss (mapped fetch) | 3 | [UM] 4.6.2 |
+| Killed delay slot | 1 | [UM] 4.2 |
 | SysAD read (cache refill, uncached load or fetch) | 5 + MasterClock alignment, then the device's response, then 1 | [UM] Tables 11-1, 11-2 |
 | Write buffer full | until the oldest write is accepted | [UM] 4.9 |
 
@@ -91,7 +128,10 @@ five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruct
   written, also for address errors ([st] `tlb64` "LW TLB Miss or Address Exception", "LW with
   address not sign extended"). Partial loads/stores (LWL/LWR/LDL/LDR/SWL/SWR/SDL/SDR) translate
   and report the unaligned address itself.
-- Micro-TLBs are not modelled (ledger `micro-tlb`).
+- The instruction micro-TLB (2 entries, 4 KiB, LRU; [UM] 1.5.1) is modelled for timing only:
+  translation always reads the joint TLB, and a micro-TLB miss on a fetch through the JTLB costs
+  3 PCycles in RF ([UM] 4.6.2). When it is flushed is a Guess (ledger `itlb-invalidation`).
+  There is no data micro-TLB: data accesses read the joint TLB ([UM] Table 4-1).
 
 ## Caches
 

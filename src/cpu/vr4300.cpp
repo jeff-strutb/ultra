@@ -52,6 +52,9 @@ void Vr4300::cold_reset() {
   frozen_ = false;
   llbit_ = false;
   wb_count_ = 0;
+  itlb_flush();
+  prev_dc_stall_ = 0;
+  prev_ended_in_stall_ = false;
   set_pc(0xFFFF'FFFF'BFC0'0000ull);
   update_timer();
 }
@@ -140,20 +143,30 @@ void Vr4300::step() {
   cur_load_kind_ = LoadTarget::None;
   cur_dcache_store_ = false;
   cur_fpu_result_reg_ = -1;
+  // Nothing of the executing instruction's pipeline cycle has happened yet; an exception taken
+  // before its run cycle needs no RF fetch.
+  rf_fetch_done_ = true;
+  dc_started_ = false;
 
-  if (check_interrupts()) {
+  auto abandon = [&] {
     pending_load_kind_ = LoadTarget::None;
     prev_dcache_store_ = false;
     fpu_result_reg_ = -1;
-    return;
-  }
+    prev_dc_stall_ = 0;
+    prev_ended_in_stall_ = false;
+  };
 
+  if (check_interrupts()) return abandon();
+
+  // The instruction was normally fetched in RF during the previous step (ADR 0005). After a
+  // redirect, or when that fetch faulted, fetch it now; a fault raises here, in program order.
   u32 instr;
-  if (!fetch(cur_pc_, instr)) {
-    pending_load_kind_ = LoadTarget::None;
-    prev_dcache_store_ = false;
-    fpu_result_reg_ = -1;
-    return;
+  const bool latched = fetch_latch_.valid && fetch_latch_.ok && fetch_latch_.vaddr == cur_pc_;
+  fetch_latch_.valid = false;
+  if (latched) {
+    instr = fetch_latch_.instr;
+  } else if (!fetch(cur_pc_, instr)) {
+    return abandon();
   }
 
   if (history_on_) {
@@ -165,12 +178,26 @@ void Vr4300::step() {
   in_delay_slot_ = false;
   branch_pending_ = false;
   cycles_ += 1;
+  run_cycle_ = cycles_;
+  next_fetch_vaddr_ = pc_;
+  rf_fetch_done_ = false;
+  load_use_ = false;
+  kill_slot_ = false;
 
   execute(instr);
 
-  if (!exception_) {
-    if (branch_pending_) in_delay_slot_ = true;
-    ++retired_;
+  // An instruction without DC work fetches its successor at the end: the order against its
+  // (empty) DC stage does not matter. An EX-stage exception has cancelled the fetch.
+  if (!rf_fetch_done_) rf_fetch();
+  if (exception_) return abandon();
+
+  if (branch_pending_) in_delay_slot_ = true;
+  ++retired_;
+  prev_dc_stall_ = dc_started_ ? cycles_ - dc_begin_ : 0;
+  prev_ended_in_stall_ = cycles_ > run_cycle_;
+  if (kill_slot_) {
+    cycles_ += timing::kKilledSlotCycles;
+    prev_ended_in_stall_ = false;
   }
   pending_load_kind_ = cur_load_kind_;
   pending_load_reg_ = cur_load_reg_;
@@ -178,12 +205,42 @@ void Vr4300::step() {
   fpu_result_reg_ = cur_fpu_result_reg_;
 }
 
+void Vr4300::rf_fetch() {
+  rf_fetch_done_ = true;
+  // RF stalls are resolved concurrently with EX interlocks (manual 4.7.3), so the fetch starts
+  // at the run cycle and the cycle ends when both are done. Only EX interlocks, which touch no
+  // device, lie between the run cycle and now.
+  const CpuCycle ex_end = cycles_;
+  cycles_ = run_cycle_;
+  FetchLatch l;
+  l.vaddr = next_fetch_vaddr_;
+  l.ok = fetch(l.vaddr, l.instr, false);
+  l.valid = !frozen_;
+  fetch_latch_ = l;
+  if (ex_end > cycles_) cycles_ = ex_end;
+}
+
+void Vr4300::dc_stage() {
+  if (dc_started_) return;
+  // i+1's RF fetch belongs to the pipeline cycle before i's DC stage (manual 4.1, Figure 4-2).
+  if (!rf_fetch_done_) rf_fetch();
+  dc_started_ = true;
+  dc_begin_ = cycles_;
+}
+
+void Vr4300::mci(u64 extra) {
+  // The EX stage completes a multicycle instruction while the previous instruction's DC stall
+  // is resolved, unless it waits for that instruction's load (manual 4.6.1).
+  const u64 hidden = load_use_ ? 0 : std::min<u64>(extra, prev_dc_stall_);
+  cycles_ += extra - hidden;
+}
+
 bool Vr4300::check_interrupts() {
   cause_ = (cause_ & ~(0x1Fu << 10)) | (u32{pins_.int_lines} << 10);
   if (!Status::IE::test(status_) || Status::EXL::test(status_) || Status::ERL::test(status_))
     return false;
   if ((Cause::IP::get(cause_) & Status::IM::get(status_)) == 0) return false;
-  raise(ExcCode::Int);
+  raise_in(ExcCode::Int, 0, Stage::Interrupt);
   return true;
 }
 
@@ -197,7 +254,48 @@ u64 Vr4300::exception_vector(bool tlb_refill, bool xtlb) const noexcept {
   return base + 0x180;
 }
 
-void Vr4300::raise(ExcCode code, u32 ce) {
+Vr4300::Stage Vr4300::stage_of(ExcCode code) noexcept {
+  // Figure 4-12. Address, TLB and bus errors on a fetch are RF; callers pass that stage.
+  switch (code) {
+    case ExcCode::Sys:
+    case ExcCode::Bp:
+    case ExcCode::CpU:
+    case ExcCode::RI: return Stage::EX;
+    case ExcCode::Int: return Stage::Interrupt;
+    default: return Stage::DC;
+  }
+}
+
+void Vr4300::exception_timing(Stage stage) {
+  // The cycle in which the stage detects the exception ends at `detect`; the pipeline then
+  // stalls 2 PCycles and the handler's first instruction takes IC and RF (manual 4.7).
+  CpuCycle detect = cycles_;
+  switch (stage) {
+    case Stage::RF:
+      // Raised at the step boundary, after every older instruction completed.
+      break;
+    case Stage::EX:
+      // Exceptions outrank the EX stage's interlocks (manual 4.7.7), and cancel the RF fetch
+      // with its memory request (4.7.3).
+      rf_fetch_done_ = true;
+      detect = run_cycle_;
+      break;
+    case Stage::DC:
+      dc_stage();
+      detect = cycles_ + timing::kDcDetectAfterEx;
+      break;
+    case Stage::Interrupt:
+      // Detected in the cycle after the step boundary; accepted only after a run cycle (4.7.1).
+      detect = cycles_ + timing::kDcDetectAfterEx + (prev_ended_in_stall_ ? 1 : 0);
+      break;
+  }
+  cycles_ = detect + timing::kExceptionAbortCycles + timing::kExceptionRefetchCycles;
+}
+
+void Vr4300::raise(ExcCode code, u32 ce) { raise_in(code, ce, stage_of(code)); }
+
+void Vr4300::raise_in(ExcCode code, u32 ce, Stage stage) {
+  exception_timing(stage);
   u64 vector = exception_vector(false, false);
   if (!Status::EXL::test(status_)) {
     epc_ = cur_in_delay_ ? cur_pc_ - 4 : cur_pc_;
@@ -208,7 +306,6 @@ void Vr4300::raise(ExcCode code, u32 ce) {
   status_ |= Status::EXL::mask;
   set_pc(vector);
   exception_ = true;
-  cycles_ += timing::kExceptionAbortCycles;
   if (break_on_exception_) frozen_ = true;
 }
 
@@ -222,10 +319,12 @@ void Vr4300::raise_address_error(u64 vaddr, Access acc) {
   // EntryHi.VPN2/R are latched from the faulting address as for TLB misses
   // (n64-systemtest tlb64 "LW TLB Miss or Address Exception").
   entry_hi_ = (entry_hi_ & EntryHi::ASID::mask) | (vaddr & 0xC000'00FF'FFFF'E000ull);
-  raise(acc == Access::Store ? ExcCode::AdES : ExcCode::AdEL);
+  raise_in(acc == Access::Store ? ExcCode::AdES : ExcCode::AdEL, 0,
+           acc == Access::Fetch ? Stage::RF : Stage::DC);
 }
 
 void Vr4300::raise_tlb(u64 vaddr, Access acc, bool miss, bool modification) {
+  exception_timing(acc == Access::Fetch ? Stage::RF : Stage::DC);
   badvaddr_ = vaddr;
   context_ = Context::BadVPN2::set(context_, (vaddr >> 13) & 0x7FFFF);
   xcontext_ = XContext::BadVPN2::set(xcontext_, (vaddr >> 13) & 0x7FFFFFF);
@@ -247,7 +346,6 @@ void Vr4300::raise_tlb(u64 vaddr, Access acc, bool miss, bool modification) {
   status_ |= Status::EXL::mask;
   set_pc(vector);
   exception_ = true;
-  cycles_ += timing::kExceptionAbortCycles;
   if (break_on_exception_) frozen_ = true;
 }
 
@@ -266,6 +364,8 @@ void Vr4300::eret() {
 // ---- address translation ---------------------------------------------------------------------
 
 bool Vr4300::translate(u64 vaddr, Access acc, Translation& out, bool report) {
+  // Data translation is the DC stage's first action (manual Table 4-1, DTLB).
+  if (acc != Access::Fetch) dc_stage();
   const bool k = kernel_mode();
   const bool s = supervisor_mode();
   if (!addr64()) {
@@ -377,7 +477,29 @@ bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out, bool report)
   const u64 pfn_addr = EntryLo::PFN::get(lo) << 12;
   out.paddr = static_cast<u32>((pfn_addr & ~(page_bytes - 1)) | (vaddr & (page_bytes - 1)));
   out.cached = EntryLo::C::get(lo) != 2;
+  if (acc == Access::Fetch) itlb_access(vaddr);
   return true;
+}
+
+void Vr4300::itlb_access(u64 vaddr) {
+  // Timing only: translation always reads the joint TLB, and the micro-TLB is flushed whenever
+  // that could give a different answer (ledger "itlb-invalidation"). A joint-TLB miss takes the
+  // exception instead of the stall (manual 4.6.2), so only successful fetches get here.
+  const u64 vpage = vaddr >> timing::kItlbPageShift;
+  if (itlb_[0].valid && itlb_[0].vpage == vpage) return;
+  if (!(itlb_[1].valid && itlb_[1].vpage == vpage)) cycles_ += timing::kItlbMissCycles;
+  // LRU over two entries: the entry used last moves to the front.
+  itlb_[1] = itlb_[0];
+  itlb_[0] = {vpage, true};
+}
+
+void Vr4300::itlb_flush() noexcept {
+  for (ItlbEntry& e : itlb_) e.valid = false;
+}
+
+void Vr4300::set_entry_hi(u64 v) noexcept {
+  if (EntryHi::ASID::get(v) != EntryHi::ASID::get(entry_hi_)) itlb_flush();
+  entry_hi_ = v;
 }
 
 void Vr4300::tlb_probe() {
@@ -395,7 +517,7 @@ void Vr4300::tlb_probe() {
 void Vr4300::tlb_read() {
   const TlbEntry& e = tlb_[index_ & 31];
   page_mask_ = e.page_mask;
-  entry_hi_ = e.entry_hi & ~u64{e.page_mask};
+  set_entry_hi(e.entry_hi & ~u64{e.page_mask});
   // The G bit of a TLB entry reads back in both EntryLo registers (5.3.1).
   const u64 g = e.global ? EntryLo::G::mask : 0;
   entry_lo0_ = (e.entry_lo0 & ~EntryLo::G::mask) | g;
@@ -415,6 +537,7 @@ void Vr4300::tlb_write(u32 i) {
   e.entry_lo0 = entry_lo0_ & 0x03FF'FFFFull;
   e.entry_lo1 = entry_lo1_ & 0x03FF'FFFFull;
   tlb_refresh_entry(i & 31);
+  itlb_flush();
 }
 
 u32 Vr4300::random_reg() const noexcept {
@@ -729,7 +852,7 @@ void Vr4300::cop0_set(u32 reg, u64 v) {
       count_offset_ = static_cast<u32>(w - static_cast<u32>(cycles_ >> 1));
       update_timer();
       break;
-    case EntryHi: entry_hi_ = v & EntryHi::kWriteMask; break;
+    case EntryHi: set_entry_hi(v & EntryHi::kWriteMask); break;
     case Compare:
       compare_ = w;
       cause_ &= ~(1u << 15);
@@ -764,7 +887,7 @@ void Vr4300::cop0_write64(u32 reg, u64 v) { cop0_set(reg, v); }
 // ---- save state ------------------------------------------------------------------------------
 
 void Vr4300::serialize(SaveState& s) {
-  s.section("vr4300", 2);
+  s.section("vr4300", 3);
   s.array(gpr_);
   s.value(hi_);
   s.value(lo_);
@@ -839,6 +962,16 @@ void Vr4300::serialize(SaveState& s) {
     s.value(w.master);
     s.value(w.ready);
     s.array(w.data);
+  }
+  s.value(fetch_latch_.vaddr);
+  s.value(fetch_latch_.instr);
+  s.value(fetch_latch_.valid);
+  s.value(fetch_latch_.ok);
+  s.value(prev_dc_stall_);
+  s.value(prev_ended_in_stall_);
+  for (ItlbEntry& e : itlb_) {
+    s.value(e.vpage);
+    s.value(e.valid);
   }
 }
 

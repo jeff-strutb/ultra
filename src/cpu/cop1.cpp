@@ -237,8 +237,10 @@ u32 Vr4300::next_instr_cop() {
   // FireExceptionViaCTC1FollowedByMFC1 / ...MFC2; docs/hardware/cpu.md). pc_ is the next
   // fetch address (the branch target when CTC1 is in a delay slot). A fault on that fetch is
   // never taken, since the older CTC1's exception wins. Other cases: ledger "cause-ce-next-instr".
-  u32 next;
-  if (!fetch(pc_, next, false)) return 0;
+  // The FPE is a DC-stage exception, so that instruction is the one RF fetched (ADR 0005).
+  dc_stage();
+  if (!fetch_latch_.valid || !fetch_latch_.ok || fetch_latch_.vaddr != pc_) return 0;
+  const u32 next = fetch_latch_.instr;
   return is_copz(next) ? cop_num(next) : 0;
 }
 
@@ -318,6 +320,7 @@ void Vr4300::fpu_execute(u32 instr) {
       } else if (likely) {
         pc_ = npc_;
         npc_ += 4;
+        kill_slot_ = true;
       } else {
         branch_pending_ = true;
       }
@@ -369,7 +372,7 @@ void Vr4300::fpu_execute(u32 instr) {
     return true;
   };
   auto finish_cycles = [&](u64 n) {
-    cycles_ += n - 1;
+    mci(n - 1);
     cur_fpu_result_reg_ = static_cast<s32>(rd_);
   };
 

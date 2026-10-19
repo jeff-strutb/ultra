@@ -56,12 +56,11 @@ void Vr4300::execute(u32 instr) {
   // non-float instruction whose rs or rt field names the loaded register (r0 exempt); an FPR
   // load stalls the next float instruction whose fs or ft field names it.
   if (pending_load_kind_ == LoadTarget::Gpr) {
-    if (!is_float_instr(op) && (rs(instr) == pending_load_reg_ || rt(instr) == pending_load_reg_))
-      cycles_ += timing::kLoadInterlockCycles;
+    load_use_ = !is_float_instr(op) && (rs(instr) == pending_load_reg_ || rt(instr) == pending_load_reg_);
   } else if (pending_load_kind_ == LoadTarget::Fpr) {
-    if (is_float_instr(op) && (fs(instr) == pending_load_reg_ || rt(instr) == pending_load_reg_))
-      cycles_ += timing::kLoadInterlockCycles;
+    load_use_ = is_float_instr(op) && (fs(instr) == pending_load_reg_ || rt(instr) == pending_load_reg_);
   }
+  if (load_use_) cycles_ += timing::kLoadInterlockCycles;
 
   u64& rt_ref = gpr_[rt(instr)];
   const u64 s = gpr_[rs(instr)];
@@ -81,9 +80,10 @@ void Vr4300::execute(u32 instr) {
       branch_pending_ = true;
       npc_ = pc_ + (simm(instr) << 2);
     } else {
-      // Not taken: the delay slot is nullified.
+      // Not taken: the delay slot, already fetched, is nullified.
       pc_ = npc_;
       npc_ += 4;
+      kill_slot_ = true;
     }
   };
   auto ea = [&]() { return s + simm(instr); };
@@ -434,14 +434,14 @@ void Vr4300::exec_special(u32 instr) {
       const u64 r = wrap_mul(s, sext_bits<35>(t));
       lo_ = sext32(lo32(r));
       hi_ = sext32(hi32(r));
-      cycles_ += timing::kMult - 1;
+      mci(timing::kMult - 1);
       return;
     }
     case FN_MULTU: {
       const u64 r = u64{lo32(s)} * u64{lo32(t)};
       lo_ = sext32(lo32(r));
       hi_ = sext32(hi32(r));
-      cycles_ += timing::kMultu - 1;
+      mci(timing::kMultu - 1);
       return;
     }
     case FN_DIV: {
@@ -457,7 +457,7 @@ void Vr4300::exec_special(u32 instr) {
         lo_ = sext32(lo32(as_u64(q)));
         hi_ = sext32(lo32(as_u64(n) - as_u64(q) * as_u64(dv)));
       }
-      cycles_ += timing::kDiv - 1;
+      mci(timing::kDiv - 1);
       return;
     }
     case FN_DIVU: {
@@ -469,19 +469,19 @@ void Vr4300::exec_special(u32 instr) {
         lo_ = sext32(n / dv);
         hi_ = sext32(n % dv);
       }
-      cycles_ += timing::kDivu - 1;
+      mci(timing::kDivu - 1);
       return;
     }
     case FN_DMULT: {
       if (!ops64()) return raise(ExcCode::RI);
       hi_ = mul_s64_wide(s, t, lo_);
-      cycles_ += timing::kDmult - 1;
+      mci(timing::kDmult - 1);
       return;
     }
     case FN_DMULTU: {
       if (!ops64()) return raise(ExcCode::RI);
       hi_ = mul_u64_wide(s, t, lo_);
-      cycles_ += timing::kDmultu - 1;
+      mci(timing::kDmultu - 1);
       return;
     }
     case FN_DDIV: {
@@ -497,7 +497,7 @@ void Vr4300::exec_special(u32 instr) {
         lo_ = as_u64(n / dv);
         hi_ = as_u64(n % dv);
       }
-      cycles_ += timing::kDdiv - 1;
+      mci(timing::kDdiv - 1);
       return;
     }
     case FN_DDIVU: {
@@ -509,7 +509,7 @@ void Vr4300::exec_special(u32 instr) {
         lo_ = s / t;
         hi_ = s % t;
       }
-      cycles_ += timing::kDdivu - 1;
+      mci(timing::kDdivu - 1);
       return;
     }
     case FN_ADD: {
@@ -599,6 +599,7 @@ void Vr4300::exec_regimm(u32 instr) {
     } else if (likely) {
       pc_ = npc_;
       npc_ += 4;
+      kill_slot_ = true;
     } else {
       branch_pending_ = true;
     }
@@ -653,7 +654,11 @@ void Vr4300::exec_cop0(u32 instr) {
       case 0x02: tlb_write(index_ & 31); return;  // TLBWI
       case 0x06: tlb_write(random_reg() & 31); return;  // TLBWR
       case 0x08: tlb_probe(); return;             // TLBP
-      case 0x18: eret(); return;                  // ERET
+      case 0x18:  // ERET: the instruction behind it was fetched and is not executed
+        rf_fetch();  // in RF during ERET's EX, before the mode changes
+        eret();
+        kill_slot_ = true;
+        return;
       case 0x10: raise(ExcCode::RI); return;
       default: return;
     }
@@ -688,6 +693,7 @@ void Vr4300::exec_cop1(u32 instr) { fpu_execute(instr); }
 
 void Vr4300::exec_cache(u32 instr) {
   if (!cop_usable(0)) return raise(ExcCode::CpU, 0);
+  dc_stage();  // CACHE operates in the DC stage (manual 4.6.8)
   const u64 vaddr = gpr_[rs(instr)] + simm(instr);
   const u32 which = rt(instr) & 3;
   const u32 func = rt(instr) >> 2;

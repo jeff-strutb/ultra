@@ -408,3 +408,24 @@ proven it.
   3417 of 3417. The behaviour beyond what the ROM measures is ledgered (`cause-ce-next-instr`,
   `jump-region-in-delay-slot`). Not done: the five-stage pipeline model and the krom timing
   residual (`cpu-timing-residual`, F5).
+- **2026-10-19, F3 (pipeline model) and F5 (investigated).** Time is now accounted by pipeline
+  stage (ADR 0005, `docs/hardware/cpu.md` "Pipeline timing model"):
+  - instruction i+1 is fetched in RF, before instruction i's DC access, and held in a latch;
+  - RF stalls overlap EX interlocks, and a multicycle instruction overlaps the previous load's
+    DC stall;
+  - exceptions cost by detecting stage (RF 4, EX 5, DC 6 PCycles; previously 2-3), and
+    interrupts wait for a run cycle;
+  - killed delay slots cost a cycle;
+  - the 2-entry instruction micro-TLB charges its 3-PCycle refill.
+
+  Each rule has a unit test (`tests/unit/test_cpu_pipeline.cpp`) that fails when the rule is
+  removed. n64-systemtest still passes 3417 of 3417. The krom TIMINGNTSC counts are unchanged
+  (±1, start phase): their loops have no overlap, killed slot or exception. Three new Guess rows
+  cover the parts the manual leaves open (`itlb-invalidation`, `exception-redirect-cycle`,
+  `cp0-bypass-interlock`).
+
+  F5: the residual is not in the CPU model. The model's loops are exact whole MasterClocks, and
+  hardware separates loops the model times equally. One busy window per scanline, a periodic
+  window of any period and a VI-clock synchronizer were each fitted to the seven loop classes
+  and rejected (ledger `cpu-timing-residual`). Closing it needs probes 1 and 6 on hardware. The
+  2 % tolerance stays, with the exact variants ledgered as expected failures.

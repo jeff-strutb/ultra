@@ -31,8 +31,10 @@ inline std::unique_ptr<System> boot(const std::string& rel, double seconds) {
 }
 
 // Boots `rel` until IPL3 hands over: the CPU at the entry point in ROM header word 0x08
-// (n64brew "ROM Header"), with RDRAM initialised and the program loaded. Checked every 64 ticks;
-// lands on the entry instruction for kBootRom (about 0.43 s).
+// (n64brew "ROM Header"), with RDRAM initialised and the program loaded (about 0.43 s for
+// kBootRom). Whole-machine slices run the PIF boot ROM (0xBFC0_0000..0xBFC0_07FF, n64brew
+// "Memory map"); IPL3 is then single-stepped, and each step runs the devices up to the CPU's
+// time, so the boot stops exactly on the entry instruction.
 inline std::unique_ptr<System> boot_to_entry(const std::string& rel) {
   std::string err;
   auto cart = Cartridge::load(rom_path(rel), &err);
@@ -42,8 +44,11 @@ inline std::unique_ptr<System> boot_to_entry(const std::string& rel) {
   const u64 entry = static_cast<u64>(static_cast<s64>(static_cast<s32>(entry32)));
   auto sys = std::make_unique<System>(SystemConfig{}, std::move(cart));
   sys->power_on();
+  constexpr u64 kPifRomBase = 0xFFFF'FFFF'BFC0'0000ull, kPifRomEnd = 0xFFFF'FFFF'BFC0'0800ull;
   const Tick limit = 2 * kRcpClockHz;
-  while (sys->cpu().pc() != entry && sys->now() < limit) sys->run_until(sys->now() + 64);
+  auto in_pif_rom = [&] { return sys->cpu().pc() >= kPifRomBase && sys->cpu().pc() < kPifRomEnd; };
+  while (in_pif_rom() && sys->now() < limit) sys->run_until(sys->now() + 64);
+  while (sys->cpu().pc() != entry && !sys->cpu().frozen() && sys->now() < limit) sys->cpu().step();
   REQUIRE(sys->cpu().pc() == entry);
   return sys;
 }

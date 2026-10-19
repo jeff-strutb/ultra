@@ -74,7 +74,7 @@ krom timing    loop counts vs hardware (CPU and CP1 TIMINGNTSC)
 |---|---|
 | Measured | 1 |
 | Derived | 4 |
-| Guess | 29 |
+| Guess | 31 |
 | Open | 1 |
 | Design | 1 |
 <!-- STATUS:END -->
