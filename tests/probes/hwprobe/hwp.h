@@ -145,6 +145,7 @@ void grp_rsp(void*);
 void grp_rdp(void*);
 void grp_rdram_contend(void*);
 void grp_vi_hsync(void*);
+void grp_peripherals(void*);
 
 extern int hwp_stage;
 extern uint32_t hwp_memsize;

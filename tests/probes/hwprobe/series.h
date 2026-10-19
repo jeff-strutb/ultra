@@ -105,6 +105,22 @@
 #define S_RDP             0x7500 // 4 per configuration (probes2.c rdp_build) x 4 reps: Count ticks to the full-sync interrupt, DP_CLOCK, DP_BUFBUSY, DP_PIPEBUSY, DP_TMEM, DP_STATUS
 #define S_RDP_INFO        0x7501 // 4 command words per configuration
 
+// ---- Peripherals: Joybus, PIF RAM, AI FIFO (peripherals.c) ----
+// Channels 0-3 are the controller ports, 4 the cartridge port. A "case" is one Joybus command
+// alone in a PIF RAM frame; peripherals.c build_cases lists them in order.
+#define S_PER_DEVICES     0xB000 // 4 per channel 0..4: info (rx byte as returned << 24 | 3 response bytes), buttons rx byte as returned, 4 buttons response bytes (buttons, stick X, stick Y)
+#define S_PER_CMD_SUMMARY 0xB001 // 4 per case: channel << 24 | command << 16 | tx bytes 2 and 3 (accessory address with check bits, or EEPROM/RTC block << 8), rx byte as returned << 24 | first 3 response bytes, read DMA Count ticks (the PIF runs the frame during it)
+#define S_PER_CMD         0xB002 // 4 per case (full record only): 64-byte frame written, 64-byte PIF RAM read back, write DMA ticks, read DMA ticks, SI_STATUS after the write, after the read
+#define S_PER_TIMING      0xB003 // 4 per channel 0..4 per command (info, buttons) x 16 (full record only): write DMA ticks, read DMA ticks
+#define S_PER_EDGE_SUMMARY 0xB004 // 1 per frame edge case (peripherals.c edges): the first 40 bytes of PIF RAM after the first read
+#define S_PER_EDGE        0xB005 // 4 per frame edge case (full record only): 64-byte frame written, PIF RAM after the first read, after a second read (no write between), write ticks, read 1 ticks, read 2 ticks, SI_STATUS after the write, after read 1, after read 2
+#define S_AI_FIFO_CONFIG  0xB010 // 4 AI_STATUS at entry, AI_STATUS after the drain, drain Count ticks, DACRATE, BITRATE, buffer bytes
+#define S_AI_FIFO_SETUP   0xB011 // 4 per scenario (both slots, second at half, underrun): AI_STATUS before; AI_STATUS, AI_LEN after queueing A; after B; after C (both slots only: a third buffer while full); Count ticks at B's queueing (0 if at once); events logged
+#define S_AI_FIFO_SUMMARY 0xB012 // 4 per scenario: 12 x (Count ticks since A's AI_LEN write, AI_LEN, AI_STATUS, MI_INTR AI bit), the first events where AI_STATUS or the interrupt bit changed (zero padded)
+#define S_AI_FIFO_BOTH    0xB013 // 4 (full record only) every change of (AI_LEN, AI_STATUS, MI_INTR AI bit): Count ticks since A's AI_LEN write, AI_LEN, AI_STATUS, AI bit (cleared by an AI_STATUS write whenever seen). A, B, C queued at once
+#define S_AI_FIFO_MID     0xB014 // 4 as S_AI_FIFO_BOTH; B queued when AI_LEN first reads below half of A
+#define S_AI_FIFO_UNDERRUN 0xB015 // 4 as S_AI_FIFO_BOTH; B queued 2 ms after the AI goes idle
+
 // ---- Run log ----
 #define S_GROUP_TIME      0x7F00 // 4 per group that ran: group id, Count ticks it took (wraps), unexpected exceptions
 #define S_FAULT           0x7F01 // 4 per unexpected exception: group id, Cause, EPC, BadVAddr, Status
