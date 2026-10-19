@@ -495,3 +495,30 @@ proven it.
     n64-systemtest-full (3 s), n64-systemtest-cpu (2 s), krom DMAAlignment-PI-ROM-FROM,
     ExceptionVIIntrDisabled and CPUADD.
   - The ROM gate gives 117 entries, 0 not as expected.
+- **2026-10-19, F9.** 21 new Catch2 cases (55 ctest entries in total, up from 34). They cover:
+  - RDRAM (`test_memory.cpp`):
+    - the SIn chain and id addressing, including Adr[20];
+    - the reset-WriteDelay skew;
+    - register readbacks;
+    - 9th-bit defaults;
+    - row wrap;
+    - the drive-current threshold.
+  - RI: masks, CURRENT_LOAD, BANK_STATUS, OverRange/MissingAck, register-space addressing,
+    broadcast, and refresh gating.
+  - The v1 arbiter: row hit/miss, dirty rows, octbyte rounding, channel occupancy, untracked
+    banks, refresh.
+  - SI and PIF (`test_io.cpp`): DMA both ways, the busy error, direct writes, the boot
+    handshake and checksum, lockout, the 5 s timeout, Joybus "no device", and challenge
+    inversion.
+  - AI: the FIFO, status, the sample clock, the delayed carry (observed through a recording
+    arbiter), and pause.
+  - SP: rows, skip, bank wrap, the final LEN, double buffering, status pairs, semaphore,
+    SP_PC, mirrors.
+  - DP: START/END, status pairs, the 24-bit clock.
+  - The CPU caches (`test_cpu_memory.cpp`): write-back, Hit_Write_Back, dirty eviction, line
+    refill, Hit_Invalidate, Index_Load_Tag, I-cache invalidation.
+  - The write buffer: four buffered stores, then a stall; drained before a read.
+  - COP0 write masks and read-only registers.
+
+  `docs/hardware/rdp.md` now records the DP interface facts. Mutation check: 27 seeded
+  defects, one per behaviour above, and each fails at least one new test.
