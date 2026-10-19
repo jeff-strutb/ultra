@@ -138,8 +138,26 @@ def deltas(vals):
     return [(b - a) & 0xFF for a, b in zip(vals, vals[1:])]
 
 
+def retire_names():
+    layout = NAMES.get(0x5600, ("", 0, ""))[2]
+    return layout.split(":", 1)[1].split() if ":" in layout else []
+
+
+TIMEOUT = 0xFFFFFFFF
+
+
 def describe(s):
     v = s["values"]
+    if s["id"] == 0x5600:
+        names = retire_names()
+        parts = []
+        for i, n in enumerate(names):
+            b = v[8 * i:8 * i + 8]
+            if b:
+                parts.append(f"{n} {Counter(b).most_common(1)[0][0]}")
+        return "ticks per 32: " + ", ".join(parts)
+    if s["esize"] == 4 and v and all(x == TIMEOUT for x in v[::3 if s["id"] in (0x7400, 0x7401) else 6 if s["id"] == 0x7500 else len(v)]):
+        return f"{len(v)} values; every run timed out (no RSP/RDP response)"
     if 0x3000 <= s["id"] < 0x4000:
         d = deltas(v)
         c = Counter(d)

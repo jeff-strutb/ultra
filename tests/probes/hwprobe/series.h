@@ -83,9 +83,33 @@
 #define S_AI_SAMPLES      0x7200 // 4 256 x (Count - Count at start, AI_LEN, AI_STATUS)
 #define S_AI_CONFIG       0x7201 // 4 DACRATE, BITRATE, buffer length, sample spacing in Count ticks
 
+// ---- Instruction retirement, refill, register latency (probes2.c) ----
+#define S_RETIRE          0x5600 // 4 8 Count deltas per class for 32 copies: nop addu sll dsll32 lui slt daddu mult multu dmult dmultu div divu ddiv ddivu mult+mflo lw ld lb lwl+lwr sw sd sb lw+use beq-taken bne-not-taken beql-not-taken j jal la+jr mfc0 mtc0 mfhi add.s add.d mul.s mul.d div.s div.d sqrt.s sqrt.d cvt.s.w cvt.w.s cvt.d.s mov.s neg.s c.eq.s+bc1t add.s-dep mul.d-dep lwc1 swc1 ldc1 mfc1 mtc1 cfc1 ctc1 lw-uncached sw-uncached sync
+#define S_REFILL          0x5700 // 4 16 each: I 32 misses, I hits, D 32 misses, D hits, TLB refill load, TLB hit load, TLB invalid load (minimal handlers); then Cause for refill, hit, invalid
+#define S_REG_READ        0x5800 // 4 8 Count deltas of 64 uncached loads per address in S_REG_READ_ADDR
+#define S_REG_READ_ADDR   0x5801 // 4 the addresses
+#define S_REG_WRITE       0x5802 // 4 8 Count deltas of 64 stores + drain per address in S_REG_WRITE_ADDR
+#define S_REG_WRITE_ADDR  0x5803 // 4 the addresses
+#define S_RDRAM_CONTEND   0x6100 // 4 per kind (idle, RSP DMA streaming, RDP filling) per stride: 8 Count deltas of 256 uncached loads
+#define S_RDRAM_CONTEND_STRIDES 0x6101 // 4 the strides
+#define S_VI_HSYNC        0x6200 // 4 per H_SYNC value per stride (0, 2048): 8 Count deltas of 256 uncached loads, VI 240p
+#define S_VI_HSYNC_VALUES 0x6201 // 4 the H_SYNC values
+// ---- RSP and RDP ----
+#define S_SP_DMA          0x7300 // 4 per direction (to SP, from SP) per length in S_SP_DMA_CONFIG, then IMEM 4 KiB: 8 Count deltas
+#define S_SP_DMA_CONFIG   0x7301 // 4 length register values
+#define S_RSP_CASE        0x7400 // 4 per case (rsp_probe.S CASE_TABLE order, 0..16) x 4 reps: Count ticks (256 iterations), DP_CLOCK delta seen by the RSP, SP_STATUS
+#define S_RSP_DMA         0x7401 // 4 per direction (in, out) per length (8, 128, 1024, 3072) x 4 reps: as S_RSP_CASE, 32 transfers per run
+#define S_RSP_INFO        0x7402 // 4 microcode loaded, iterations, case count, IMEM bytes
+#define S_RDP             0x7500 // 4 per configuration (probes2.c rdp_build) x 4 reps: Count ticks to the full-sync interrupt, DP_CLOCK, DP_BUFBUSY, DP_PIPEBUSY, DP_TMEM, DP_STATUS
+#define S_RDP_INFO        0x7501 // 4 command words per configuration
+
 // ---- Run log ----
 #define S_GROUP_TIME      0x7F00 // 4 per group that ran: group id, Count ticks it took (wraps), unexpected exceptions
 #define S_FAULT           0x7F01 // 4 per unexpected exception: group id, Cause, EPC, BadVAddr, Status
+#define S_FLASH_TIMES     0x7F02 // 4 chip or sector erase Count ticks, then each page program's ticks in order (up to 512)
+
+// A wait on the RSP, RDP or a DMA that did not finish.
+#define HWP_TIMEOUT 0xFFFFFFFFu
 
 // Indices used in composed ids.
 #define HWP_VI_OFF   0

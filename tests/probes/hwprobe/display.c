@@ -104,7 +104,8 @@ void hwp_print(int row, const char* fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(line, sizeof line, fmt, ap);
   va_end(ap);
-  graphics_draw_box(&text_surf, 0, 16 + row * 10, 320, 10, graphics_make_color(0, 0, 0, 255));
-  graphics_draw_text(&text_surf, 16, 16 + row * 10, line);
+  // 26 rows of 9 pixels fit the 240-line screen.
+  graphics_draw_box(&text_surf, 0, 6 + row * 9, 320, 9, graphics_make_color(0, 0, 0, 255));
+  graphics_draw_text(&text_surf, 12, 6 + row * 9, line);
   debugf("%s\n", line);
 }

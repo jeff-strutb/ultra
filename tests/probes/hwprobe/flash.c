@@ -51,6 +51,13 @@ static uint32_t io_r(void) {
 }
 
 static bool word_indexed;
+static uint32_t times[513];
+static uint32_t ntimes;
+
+const uint32_t* flash_times(uint32_t* n) {
+  *n = ntimes;
+  return times;
+}
 static uint32_t last_status;
 
 static uint64_t id_buf[2] __attribute__((aligned(16)));
@@ -100,8 +107,11 @@ bool flash_present(uint64_t id) { return (uint32_t)(id >> 32) == 0x11118001u; }
 static bool erase(uint32_t setup) {
   clear_status();
   cmd(setup);
+  const uint32_t t0 = c0_count();
   cmd(CMD_ERASE);
   bool ok = wait_ready(ST_ERASE_BUSY, 2000);
+  times[0] = c0_count() - t0;
+  ntimes = 1;
   last_status = read_status();
   ok = ok && (last_status & ST_ERASE_OK);
   clear_status();
@@ -116,8 +126,10 @@ bool flash_program_page(uint32_t page, const void* data128) {
   clear_status();
   cmd(CMD_LOAD_PAGE);
   pi_dma_to_cart(FLASH_BASE, data128, 128);
+  const uint32_t t0 = c0_count();
   cmd(CMD_PROGRAM_PAGE | (page & 0x3FF));
   bool ok = wait_ready(ST_PROGRAM_BUSY, 50);
+  if (ntimes > 0 && ntimes < 513) times[ntimes++] = c0_count() - t0;
   last_status = read_status();
   ok = ok && (last_status & ST_PROGRAM_OK);
   clear_status();

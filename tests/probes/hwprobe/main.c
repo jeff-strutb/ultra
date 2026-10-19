@@ -22,6 +22,14 @@ static const hwp_group_t stage1_groups[] = {
     {0x60, "RDRAM patterns", grp_rdram},
     {0x70, "PI", grp_pi},
     {0x71, "SI and AI", grp_si_ai},
+    {0x56, "instruction retirement", grp_retire},
+    {0x57, "cache and TLB refill", grp_refill},
+    {0x58, "register latency", grp_reglat},
+    {0x73, "SP DMA", grp_sp_dma},
+    {0x74, "RSP microcode", grp_rsp},
+    {0x75, "RDP commands", grp_rdp},
+    {0x61, "RDRAM contention", grp_rdram_contend},
+    {0x62, "VI line length", grp_vi_hsync},
     {0x55, "TLB shutdown", grp_tlb_shutdown},  // last: may disable the TLB until reset
 };
 static const hwp_group_t stage2_groups[] = {
@@ -29,8 +37,8 @@ static const hwp_group_t stage2_groups[] = {
     {0x55, "TLB shutdown (V=0)", grp_tlb_shutdown},
 };
 
-static uint32_t group_log[3 * 16];
-static uint32_t fault_log[5 * 16];
+static uint32_t group_log[3 * 24];
+static uint32_t fault_log[5 * 24];
 static int ngroups, nfaults;
 
 static void run_groups(const hwp_group_t* g, int n, int first_row) {
@@ -46,7 +54,7 @@ static void run_groups(const hwp_group_t* g, int n, int first_row) {
     group_log[3 * ngroups + 0] = g[i].id;
     group_log[3 * ngroups + 1] = t1 - t0;
     group_log[3 * ngroups + 2] = hwp_exc.faults - faults0;
-    if (ngroups < 15) ++ngroups;
+    if (ngroups < 23) ++ngroups;
     if (r != 0) {
       uint32_t* f = &fault_log[5 * nfaults];
       f[0] = g[i].id;
@@ -54,7 +62,7 @@ static void run_groups(const hwp_group_t* g, int n, int first_row) {
       f[2] = (uint32_t)hwp_exc.epc;
       f[3] = (uint32_t)hwp_exc.badvaddr;
       f[4] = hwp_exc.status;
-      if (nfaults < 15) ++nfaults;
+      if (nfaults < 23) ++nfaults;
       hwp_print(first_row + i, "%-24s FAULT %08lx", g[i].name, (unsigned long)hwp_exc.cause);
     } else {
       hwp_print(first_row + i, "%-24s ok", g[i].name);
@@ -65,6 +73,9 @@ static void run_groups(const hwp_group_t* g, int n, int first_row) {
 
 static void finish(int row) {
   rec_series(S_GROUP_TIME, 4, 3 * ngroups, group_log);
+  uint32_t nt;
+  const uint32_t* t = flash_times(&nt);
+  rec_series(S_FLASH_TIMES, 4, nt, t);
   if (nfaults) rec_series(S_FAULT, 4, 5 * nfaults, fault_log);
   const bool ok = rec_finish(0);
   hwp_print(row, "record %lu B, %lu series, crc %08lx", (unsigned long)rec_bytes(),
@@ -117,11 +128,7 @@ int main(void) {
   hwp_screen_init();
   hwp_vectors_install();
 
-  const bool waiting = *HWP_LOW_MAGIC == HWP_WAIT_MAGIC;
-  hwp_stage = (__boot_resettype == 1 && waiting) ? 2 : 1;
-  *HWP_LOW_MAGIC = 0;
-
-  hwp_print(0, "Ultra hwprobe %s  stage %d", HWP_BUILD_ID, hwp_stage);
+  hwp_print(0, "Ultra hwprobe %s", HWP_BUILD_ID);
   if ((uint32_t)__bss_end > 0x80100000u) {
     hwp_print(1, "BUILD ERROR: program overlaps 480i fb");
     for (;;) {}
@@ -135,26 +142,41 @@ int main(void) {
     hwp_print(1, "FlashRAM %08lx%08lx", (unsigned long)(id >> 32), (unsigned long)id);
   }
 
+  // The stage follows from what FlashRAM already holds, so RESET is the only control: a cold
+  // boot measures stage 1; RESET after it runs stage 2; any later RESET changes nothing.
+  static uint8_t hdr[64] __attribute__((aligned(16)));
+  flash_read(HWP_STAGE1_BASE, hdr, sizeof hdr);
+  const bool have1 = memcmp(hdr, "ULTRAHW1", 8) == 0;
+  flash_read(HWP_STAGE2_BASE, hdr, sizeof hdr);
+  const bool have2 = memcmp(hdr, "ULTRAHW2", 8) == 0;
+  const bool warm = __boot_resettype == 1;
+  hwp_stage = warm && have1 ? (have2 ? 3 : 2) : 1;
+  *HWP_LOW_MAGIC = 0;
+
   if (hwp_stage == 1) {
+    hwp_print(1, "stage 1 of 2: measuring");
     if (!flash_erase_chip()) hwp_print(2, "FlashRAM erase reported failure");
     rec_begin(1, id);
     run_groups(stage1_groups, sizeof stage1_groups / sizeof stage1_groups[0], 3);
     tlb_pattern();
-    finish(16);
-    hwp_print(19, "STAGE 1 DONE");
-    hwp_print(20, "RESET: stage 2   power off: finished");
+    finish(22);
+    hwp_print(24, "STAGE 1 DONE. PRESS RESET.");
     *HWP_LOW_PRENMI = 0;
     *HWP_LOW_PRENMI_N = 0;
     *HWP_LOW_LASTCOUNT = 0;
     *HWP_LOW_MAGIC = HWP_WAIT_MAGIC;
     hwp_exc_reset(HWP_EXPECT_PRENMI);
     hwp_reset_wait();
-  } else {
+  } else if (hwp_stage == 2) {
+    hwp_print(1, "stage 2 of 2: state after RESET");
     if (!flash_erase_sector(HWP_STAGE2_BASE / 128)) hwp_print(2, "FlashRAM erase reported failure");
     rec_begin(2, id);
     run_groups(stage2_groups, sizeof stage2_groups / sizeof stage2_groups[0], 3);
-    finish(16);
-    hwp_print(19, "STAGE 2 DONE: power off");
+    finish(22);
+    hwp_print(24, "ALL DONE. PRESS RESET, THEN POWER OFF.");
+  } else {
+    hwp_print(1, "both stages are recorded");
+    hwp_print(24, "ALL DONE. POWER OFF AND SEND THE SAVE.");
   }
   for (;;) {}
 }

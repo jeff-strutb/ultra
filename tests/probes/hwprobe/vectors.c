@@ -26,8 +26,10 @@ void hwp_vectors_restore(void) {
   sync_vectors();
 }
 
-void hwp_vector180_minimal(bool on) {
-  memcpy((void*)0x80000180u, on ? hwp_vec_minimal : hwp_vec_stub, 16);
+void hwp_vector180_minimal(bool on) { hwp_vector_minimal_at(0x180, on); }
+
+void hwp_vector_minimal_at(uint32_t vec, bool on) {
+  memcpy((void*)(0x80000000u + vec), on ? hwp_vec_minimal : hwp_vec_stub, 16);
   sync_vectors();
 }
 

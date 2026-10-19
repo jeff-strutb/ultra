@@ -10,7 +10,7 @@ The oracle is the console's record. Ultra's record is never an oracle.
 
 ## Why FlashRAM
 
-- 128 KiB holds the raw per-iteration samples the `cpu-timing-residual` question needs; 32 KiB
+- 128 KiB holds the raw per-iteration samples (stage 1 uses about 96 KiB of its 112 KiB) the `cpu-timing-residual` question needs; 32 KiB
   SRAM does not.
 - Every flashcart emulates it, real carts use it, and its protocol is documented (n64brew
   "Flash"). 1 Mbit SRAM is also offered by flashcarts, but its address map is not documented.
@@ -19,15 +19,20 @@ The oracle is the console's record. Ultra's record is never an oracle.
 
 ## Running it
 
-1. Copy `tests/probes/hwprobe/hwprobe.z64` to the flashcart and boot it. The screen names each
-   group as it runs. Stage 1 takes under 10 s: about 3 s of probes, plus erasing and
-   programming the FlashRAM.
-2. When the screen shows `STAGE 1 DONE`, the record is written and verified. Optionally press
-   RESET once to run stage 2 (soft-reset state). On a flashcart that resets back into the
-   game, stage 2 runs and shows `STAGE 2 DONE`. On one that resets into its menu, the stage 1
-   record is kept and stage 2 is reported as not run.
-3. Turn the console off, or return to the menu, so the flashcart writes the `.sav` to its SD
-   card. Send that file.
+No controller is needed and nothing is chosen on screen. RESET is the only control.
+
+1. Copy `tests/probes/hwprobe/hwprobe.z64` to the flashcart and boot it. Stage 1 measures and
+   writes its record (under 15 s), then shows `STAGE 1 DONE. PRESS RESET.`
+2. Press RESET. On a flashcart that resets into the game, stage 2 records the state after the
+   soft reset, then shows `ALL DONE. PRESS RESET, THEN POWER OFF.` On one that resets into its
+   menu, stage 2 does not run and the stage 1 record is complete on its own.
+3. Press RESET once more, so that every flashcart writes the save to its SD card (some write it
+   only on a reset), then power off. Any later boot after a RESET only shows `ALL DONE`. Send
+   the `.sav` file.
+
+The ROM decides what to do from what FlashRAM already holds. A cold boot always starts a new
+stage 1 and erases the old record. A RESET after stage 1 runs stage 2. A RESET after stage 2
+changes nothing.
 
 If the screen stops on a group, the record still holds every group before it: pages are
 programmed as each group finishes, and each series has its own CRC. Report the group name
@@ -202,8 +207,10 @@ uncached SWs drained by SYNC and an uncached load. 8 repetitions, each with VI o
 ### PI [0x70] → `pi-address-phase`, `pi-busy-writes`
 
 ROM-to-RDRAM DMA time for 2 B to 8 KiB under domain 1 timings from fast (LAT 5, PWD 12, RLS 2)
-to slow (LAT 0xFF, PWD 0xFF). Register behaviour of writes to DRAM_ADDR, CART_ADDR, RD_LEN and
-STATUS while busy, and an IO read of ROM during a DMA.
+to slow (LAT 0xFF, PWD 0xFF). Register behaviour of writes to DRAM_ADDR, CART_ADDR, WR_LEN and
+STATUS while busy, and an IO read of ROM during a DMA. RD_LEN is left out, because if the PI
+accepted it the write would reach cartridge ROM space, which a flashcart may let through to
+the image a soft reset boots from.
 
 ### SI and AI [0x71, 0x72] → `si-pif`, `ai-fetch`, `ai-status-count`
 
@@ -211,15 +218,63 @@ SI DMA to and from PIF RAM with a controller-status command block, 32 repetition
 controller-presence bytes, so that the emulator run can be configured the same. AI_LEN and
 AI_STATUS sampled 512 times at a fixed Count spacing while a 4 KiB buffer plays silence.
 
+### Instruction retirement [0x56] → SPEC probe 1
+
+32 copies of one instruction per class, 59 classes: integer ALU and shifts, every multiply and
+divide, cached loads and stores (with a dependent use), branches taken and not taken, branch
+likely, jumps, CP0 and HI/LO moves, every FPU arithmetic and convert class (independent and
+dependent), FPU loads, stores and moves, uncached loads and stores, and SYNC.
+
+### Cache and TLB refill [0x57] → SPEC probe 2
+
+32 I-cache line misses against 32 hits, 32 D-cache line misses against hits, and a load that
+takes a TLB refill, one that hits, and one that finds an invalid entry (minimal handlers at
+0x000, 0x080 and 0x180), plus the Cause each raised.
+
+### Register latency [0x58] → `rcp-reg-read`, `mi-reg-read`, `rcp-reg-write`
+
+64 back-to-back uncached loads from each of 21 addresses (every RCP block, SP DMEM and IMEM,
+the DP registers, PIF RAM, cartridge ROM, RDRAM and the RDRAM registers). The same with stores
+to 9 registers whose writes have no effect beyond clearing an unused interrupt.
+
+### RSP [0x73, 0x74] → SPEC probe 3
+
+CPU-initiated SP DMA in both directions, for lengths 8 B to 4 KiB, three count/skip shapes, and
+IMEM. A microcode (`rsp_probe.S`) of 17 timed cases (scalar ALU, load-use, store after load,
+branches, independent and dependent vector ops, dual issue, vector loads and stores, MFC2,
+multiply-accumulate, reciprocal/square root, flag moves, DMEM access), and RSP-initiated DMA
+at four lengths. Each case runs 256 iterations, and the CPU times it from clearing HALT to the
+BREAK.
+
+### RDP [0x75] → SPEC probe 5
+
+Command lists built on the CPU and sent from RDRAM, each timed to the full-sync interrupt and
+with DP_CLOCK, BUFBUSY, PIPEBUSY and TMEM read afterwards. The 13 configurations: setup only;
+fill rectangles at three sizes in 16 bpp and one in 32 bpp; tile loads; copy-mode,
+1-cycle, 1-cycle with Z, 1-cycle blended and 2-cycle textured rectangles; and flat triangles at
+two sizes. The triangle encoding is unverified: Ultra has no RDP yet.
+
+### RDRAM contention and line length [0x61, 0x62] → SPEC probes 4 and 6
+
+The uncached load loop at four strides while idle, while the RSP streams 3 KiB DMAs, and while
+the RDP fills the screen. The same loop with VI_H_SYNC set to four line lengths, since RDRAM
+refresh runs once per line.
+
+### FlashRAM [0x7F] → `flash-op-time`
+
+The erase time and each page program time of the record writer itself.
+
 ## Emulator run
 
-`ultra_harness hwprobe ROM SAV` runs stage 1 headless (about 2.2 s emulated, under a second of
-wall time) and writes the emulated FlashRAM. ctest `hwprobe-emulated` checks that the record is
+`ultra_harness hwprobe ROM SAV` runs stage 1 headless (about 5 s emulated, about a second of
+wall time) and writes the emulated FlashRAM. Ultra does not execute RSP microcode or RDP
+commands yet, so those runs record `HWP_TIMEOUT`; every wait on them is bounded. ctest `hwprobe-emulated` checks that the record is
 complete and every CRC holds. Ultra has no reset button yet, so stage 2 has not run in the
 emulator. Ultra starts with no controllers attached. Before comparing SI timings, configure it
 like the console in `S_SI_RESULT`.
 
 ## Not covered
 
-`boot-rom-timing` (needs our own IPL3), `mi-ebus`, the RDP and RSP rows (Phase 2), and
-bus-capture residuals (logic analyzer).
+`boot-rom-timing` (needs our own IPL3), `mi-ebus` (the EBus test mode is not documented
+well enough to drive safely), PAL timing (needs a PAL console), RDP pixel output (Angrylion is
+the oracle for that), and the bus-capture residuals (logic analyzer).

@@ -53,6 +53,7 @@ bool flash_erase_sector(uint32_t page);
 bool flash_program_page(uint32_t page, const void* data128);
 void flash_read(uint32_t offset, void* dst, uint32_t len);
 uint32_t flash_last_status(void);
+const uint32_t* flash_times(uint32_t* n); // erase ticks, then page program ticks
 
 // ---- PI / SI helpers (pi.c) ----
 void pi_dma_from_cart(void* rdram, uint32_t cart, uint32_t len);
@@ -89,6 +90,7 @@ extern volatile hwp_exc_t hwp_exc;
 void hwp_vectors_install(void);
 void hwp_vectors_restore(void);
 void hwp_vector180_minimal(bool on); // 0x180 = {mtc0 k1, EPC; nop; nop; eret}
+void hwp_vector_minimal_at(uint32_t vec, bool on); // the same at 0x000, 0x080, 0x100 or 0x180
 void hwp_exc_reset(uint32_t expect);
 // Runs fn(arg) and returns 0, or returns -1 if an unexpected exception aborted it.
 int hwp_try(void (*fn)(void*), void* arg);
@@ -125,6 +127,14 @@ void grp_tlb_shutdown(void*);
 void grp_rdram(void*);
 void grp_pi(void*);
 void grp_si_ai(void*);
+void grp_retire(void*);
+void grp_refill(void*);
+void grp_reglat(void*);
+void grp_sp_dma(void*);
+void grp_rsp(void*);
+void grp_rdp(void*);
+void grp_rdram_contend(void*);
+void grp_vi_hsync(void*);
 
 extern int hwp_stage;
 extern uint32_t hwp_memsize;
