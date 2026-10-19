@@ -11,6 +11,8 @@ namespace ultra {
 struct CpuPins {
   enum : u8 { kRcp = 1u << 0, kCart = 1u << 1, kPreNmi = 1u << 2, kInt3 = 1u << 3, kInt4 = 1u << 4 };
   u8 int_lines = 0;
+  // The VR4300's internal NMI request latch (manual 14.2, Figure 14-1): set by the NMI* falling
+  // edge (driven by the PIF), cleared by the CPU when it takes the NMI exception.
   bool nmi = false;
 
   void set(u8 line, bool level) noexcept {

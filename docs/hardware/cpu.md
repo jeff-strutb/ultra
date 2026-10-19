@@ -154,6 +154,11 @@ Stall amounts:
   FireExceptionViaCTC1, ...FollowedByMFC1, ...FollowedByMFC2, ...Delay). Other cases: ledger
   `cause-ce-next-instr`.
 - Interrupt pins: Int0 = RCP (MI), Int2 = PIF pre-NMI ([n64brew] "PIF-NUS").
+- NMI is edge-triggered: the falling edge of NMI* is latched into an internal register and
+  the request is taken whatever IE, EXL and ERL are; it only takes effect while the pipeline
+  runs ([UM] 6.4.6, 14.2 and Figure 14-1). `CpuPins::nmi` is that latch: the PIF sets it, the
+  CPU takes it at the next step boundary (with the external interrupts' detection timing) and
+  clears it. A frozen CPU does not take it.
 - Watch: WatchLo.PAddr0 compares physical address bits 31:3 for loads (R) and stores (W);
   deferred while EXL is set ([UM] 6.4.17).
 - 64-bit operations are valid in kernel mode regardless of KX ([UM] 6.3.5); otherwise they raise

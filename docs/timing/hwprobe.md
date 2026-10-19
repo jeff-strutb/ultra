@@ -471,10 +471,13 @@ The erase time and each page program time of the record writer itself.
 
 `ultra_harness hwprobe ROM SAV` runs stage 1 headless (about 5 s emulated, about a second of
 wall time) and writes the emulated FlashRAM. Ultra does not execute RSP microcode or RDP
-commands yet, so those runs record `HWP_TIMEOUT`; every wait on them is bounded. ctest `hwprobe-emulated` checks that the record is
-complete and every CRC holds. Ultra has no reset button yet, so stage 2 has not run in the
-emulator. `ultra_harness hwprobe-full ROM OUT [--direct]` writes the full record; `--direct`
-boots as SC64 direct boot does, so `hwprobe-cold.z64` runs too (ctest `hwprobe-cold`). Ultra starts with no controllers attached. Before comparing SI timings, configure it
+commands yet, so those runs record `HWP_TIMEOUT`; every wait on them is bounded. With
+`--stage2` the harness then presses RESET once the stage 1 wait loop is running (its iteration
+count at 0xA0000390 is nonzero) and runs on until stage 2 prints its record. ctest
+`hwprobe-emulated` runs both stages and `hwprobe-record` (`hwprobe.py dump SAV --stages 2`)
+checks that both records are complete and every CRC holds. `ultra_harness hwprobe-full ROM OUT
+[--direct]` writes the full record; `--direct` boots as SC64 direct boot does, so
+`hwprobe-cold.z64` runs too (ctest `hwprobe-cold`). Ultra starts with no controllers attached. Before comparing SI timings, configure it
 like the console in `S_SI_RESULT`.
 
 ## Not covered

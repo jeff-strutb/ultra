@@ -156,6 +156,15 @@ void Vr4300::step() {
     prev_ended_in_stall_ = false;
   };
 
+  // The NMI latch is set on the NMI* falling edge and taken regardless of IE/EXL/ERL (manual
+  // 6.4.6 and 14.2). Taken at the step boundary with the same detection timing as the external
+  // interrupts.
+  if (pins_.nmi) {
+    pins_.nmi = false;
+    exception_timing(Stage::Interrupt);
+    nmi();
+    return abandon();
+  }
   if (check_interrupts()) return abandon();
 
   // The instruction was normally fetched in RF during the previous step (ADR 0005). After a

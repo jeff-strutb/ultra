@@ -35,7 +35,7 @@ System::System(const SystemConfig& cfg, std::unique_ptr<Cartridge> cart)
       rdram_(cfg.rdram_bytes),
       ri_(rdram_, arbiter_, trace_),
       mi_(ri_, pins_),
-      pif_(sched_),
+      pif_(sched_, pins_),
       si_(sched_, mi_, ri_, pif_),
       pi_(sched_, mi_, ri_, cart_.get()),
       sp_(sched_, mi_, ri_),

@@ -5,6 +5,7 @@ add_executable(ultra_unit_tests
   test_flashram.cpp
   test_harness.cpp
   test_machine.cpp
+  test_pif_reset.cpp
   test_scheduler.cpp)
 # test_harness.cpp checks the ROM harness's helpers (tests/harness).
 target_include_directories(ultra_unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests/harness)
