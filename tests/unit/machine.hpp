@@ -1,5 +1,5 @@
 #pragma once
-// Test fixture: a whole machine booted through PIF + IPL3 from a vendored ROM, so that RDRAM is
+// Test fixture: a whole machine booted through PIF + IPL3 from a tracked ROM, so that RDRAM is
 // initialised exactly as on hardware, after which tests place their own code in RDRAM and drive
 // the CPU instruction by instruction.
 
@@ -16,6 +16,10 @@ namespace ultra::test {
 
 inline std::string rom_path(const std::string& rel) { return std::string(ULTRA_TEST_ROMS) + "/" + rel; }
 
+// Booted by machine-level tests. It is tracked (libdragon's open IPL3, tests/roms/README.md), so
+// the tests run from a fresh clone; krom ROMs are not.
+inline constexpr const char* kBootRom = "n64-systemtest/n64-systemtest-cpu.z64";
+
 inline std::unique_ptr<System> boot(const std::string& rel, double seconds) {
   std::string err;
   auto cart = Cartridge::load(rom_path(rel), &err);
@@ -26,13 +30,87 @@ inline std::unique_ptr<System> boot(const std::string& rel, double seconds) {
   return sys;
 }
 
-// A booted console (krom's ADD test, which leaves the CPU spinning in its own code) taken over
-// by the test: kernel mode, interrupts off, CU0/CU1, FR=1.
+// Boots `rel` until IPL3 hands over: the CPU at the entry point in ROM header word 0x08
+// (n64brew "ROM Header"), with RDRAM initialised and the program loaded. Checked every 64 ticks;
+// lands on the entry instruction for kBootRom (about 0.43 s).
+inline std::unique_ptr<System> boot_to_entry(const std::string& rel) {
+  std::string err;
+  auto cart = Cartridge::load(rom_path(rel), &err);
+  REQUIRE(cart);
+  const auto rom = cart->rom();
+  const u32 entry32 = load_be32(rom.data() + 0x08);
+  const u64 entry = static_cast<u64>(static_cast<s64>(static_cast<s32>(entry32)));
+  auto sys = std::make_unique<System>(SystemConfig{}, std::move(cart));
+  sys->power_on();
+  const Tick limit = 2 * kRcpClockHz;
+  while (sys->cpu().pc() != entry && sys->now() < limit) sys->run_until(sys->now() + 64);
+  REQUIRE(sys->cpu().pc() == entry);
+  return sys;
+}
+
+// A booted console taken over by the test the way boot code takes over a CPU: kernel mode,
+// interrupts off, CU0/CU1, FR=1; then, from code in RSP IMEM (outside RDRAM and the caches),
+// every I-cache line invalidated, every D-cache line written back and invalidated, and every TLB
+// entry made unmatchable. Nothing the booted ROM left in the caches or TLB can reach a test.
 struct Machine {
   static constexpr u64 kCodeBase = 0xFFFF'FFFF'8020'0000ull;  // cached KSEG0, paddr 0x0020_0000
-  std::unique_ptr<System> sys = boot("krom/CPUTest/CPU/ADD/CPUADD.N64", 0.25);
+  std::unique_ptr<System> sys = boot_to_entry(kBootRom);
 
-  Machine() { sys->cpu().cop0_write64(cop0::Status, 0x3400'0000); }
+  Machine() {
+    sys->cpu().cop0_write64(cop0::Status, 0x3400'0000);
+    reset_caches_and_tlb();
+  }
+
+  // VR4300 manual: I-cache 16 KiB in 32-byte lines, D-cache 8 KiB in 16-byte lines (11.2);
+  // CACHE op 0 = I Index_Invalidate, op 1 = D Index_Write_Back_Invalidate (16, CACHE); 32 TLB
+  // entries (5.1). EntryHi VPN2s in KSEG0 never match, since KSEG0 is not translated.
+  void reset_caches_and_tlb() {
+    constexpr u64 kImem = 0xFFFF'FFFF'A400'1000ull;
+    constexpr u32 kICacheBytes = 16 * 1024, kICacheLine = 32;
+    constexpr u32 kDCacheBytes = 8 * 1024, kDCacheLine = 16;
+    constexpr u32 kTlbEntries = 32, kPagePairBytes = 0x2000;
+    using namespace mips;
+    Assembler a(kImem);
+    const auto iloop = a.new_label(), dloop = a.new_label(), tloop = a.new_label();
+    const auto done = a.new_label();
+    a.lui(t0, 0x8000);
+    a.li(t1, 0x8000'0000u + kICacheBytes);
+    a.bind(iloop);
+    a.cache(0x00, 0, t0);
+    a.addiu(t0, t0, kICacheLine);
+    a.bne(t0, t1, iloop);
+    a.nop();
+    a.lui(t0, 0x8000);
+    a.li(t1, 0x8000'0000u + kDCacheBytes);
+    a.bind(dloop);
+    a.cache(0x01, 0, t0);
+    a.addiu(t0, t0, kDCacheLine);
+    a.bne(t0, t1, dloop);
+    a.nop();
+    a.mtc0(zero, cop0::PageMask);
+    a.mtc0(zero, cop0::EntryLo0);
+    a.mtc0(zero, cop0::EntryLo1);
+    a.mtc0(zero, cop0::Wired);
+    a.move(t0, zero);
+    a.ori(t1, zero, kTlbEntries);
+    a.lui(t2, 0x8000);
+    a.bind(tloop);
+    a.mtc0(t0, cop0::Index);
+    a.mtc0(t2, cop0::EntryHi);
+    a.nop();
+    a.tlbwi();
+    a.addiu(t0, t0, 1);
+    a.bne(t0, t1, tloop);
+    a.addiu(t2, t2, kPagePairBytes);
+    a.mtc0(zero, cop0::EntryHi);
+    a.bind(done);
+    a.nop();
+    const std::vector<u32> code = a.finish();
+    u8* imem = sys->sp().imem();
+    for (usize i = 0; i < code.size(); ++i) store_be32(imem + i * 4, code[i]);
+    cpu().set_pc(kImem);
+    REQUIRE(run_to(a.address_of(done)));
+  }
 
   Vr4300& cpu() { return sys->cpu(); }
 
@@ -61,6 +139,17 @@ struct Machine {
     return cpu().pc() == end;
   }
   u64 gpr(mips::Reg r) { return cpu().gpr(r); }
+
+  // Leaves the CPU spinning in a branch-to-self at kCodeBase, so whole-machine runs exercise the
+  // devices while the CPU touches nothing.
+  void park() {
+    mips::Assembler a(kCodeBase);
+    const auto self = a.new_label();
+    a.bind(self);
+    a.b(self);
+    a.nop();
+    load(a.finish());
+  }
 };
 
 }  // namespace ultra::test

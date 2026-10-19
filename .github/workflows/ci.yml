@@ -1,0 +1,47 @@
+# CI gates (docs/SPEC.md, Verification): unit tests, the ROM gate and the ledger check, on the
+# spec's reference platform (Linux x86-64) with both required compilers. The krom ROM images are
+# not in the repository (they embed Nintendo's IPL3; tests/roms/README.md), so CI configures
+# ULTRA_ROMS_OPTIONAL=ON: their entries are reported as skipped, with the count in the log, and
+# every tracked entry (n64-systemtest) must still come out exactly as the manifest says.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: release
+            cxx: clang++-18
+          - preset: gcc-release
+            cxx: g++-14
+          - preset: asan
+            cxx: clang++-18
+          - preset: tsan
+            cxx: clang++-18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Configure
+        run: >
+          cmake --preset ${{ matrix.preset }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DULTRA_ROMS_OPTIONAL=ON
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        # tsan: the ThreadSanitizer runtime needs ASLR entropy the runner kernel exceeds.
+        run: |
+          if [ "${{ matrix.preset }}" = tsan ]; then sudo sysctl vm.mmap_rnd_bits=28; fi
+          ctest --preset ${{ matrix.preset }}

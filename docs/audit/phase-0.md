@@ -383,3 +383,16 @@ proven it.
   all-zero power-on TLB and the unmodelled TLB shutdown as Guesses with probes. Every manifest
   `fail` line now names its ledger key. Gate: 117 entries, 0 not as expected; the status block
   reads 91 / 112 ROMs.
+- **2026-10-19, F4 and F11 (partly).** Added `.github/workflows/ci.yml`: release (Clang 18),
+  gcc-release (GCC 14), asan and tsan on ubuntu-24.04, each running ctest. The harness now
+  treats an entry with missing files as not as expected (previously a missing ROM counted as an
+  expected failure), or, with `--allow-missing` (`ULTRA_ROMS_OPTIONAL=ON`, used by CI), as a
+  reported skip. The machine-level unit tests boot the tracked n64-systemtest ROM to IPL3's
+  handover and reset the caches and TLB from RSP IMEM before taking over, so they run from a
+  fresh clone; the one test that needs Nintendo's IPL3 skips visibly. `tools/check_ledger.py`
+  (ctest `ledger-exact`) checks that every expected failure names an expected-fail ledger row,
+  every row is still used, and every `ledger "<key>"` in the source exists. The tsan test
+  preset excludes the ROM gate (label `rom`), which starts no second thread. Correction to F4:
+  `progress.py --check` already ignores the snapshot date (checked with a backdated README; exit
+  0). Not done: the `clang-tidy` config (clang-tidy is not installed on this host), and the
+  workflow has not yet run on GitHub.

@@ -4,17 +4,21 @@
 //       Runs n64-systemtest until it prints its summary. Passes when it reports
 //       "Base: Failed 0 of N" (the ROM ran to its end and every test passed).
 //   ultra_harness screen ROM PNG [--seconds S]
-//       Runs the ROM and compares the raw framebuffer (VI origin/width/type) with a reference
-//       image of the same size. Passes on an exact match. --dump OUT.ppm writes the capture.
+//       Runs the ROM and compares the framebuffer as presented (Vi::capture_presented: the
+//       displayed region scaled and resampled to the reference's size) with the reference image.
+//       Passes on an exact match. --dump OUT.ppm writes the capture.
 //   ultra_harness kromcount ROM FONT COUNTS TOLERANCE [--seconds S]
 //       krom timing ROMs (CPUTIMINGNTSC, CP1TIMINGNTSC) print a loop count per instruction as
 //       eight hex digits. Reads them back from the framebuffer with the ROM's own 8x8 font and
 //       compares each with the hardware count listed in COUNTS. Passes when every count is
 //       within TOLERANCE percent (the ledger states the tolerance and why).
-//   ultra_harness manifest FILE [--rom-dir DIR]
+//   ultra_harness manifest FILE [--rom-dir DIR] [--allow-missing]
 //       Runs every entry of a manifest and checks the outcome against its expectation
 //       (pass / fail). An unexpected pass fails just like an unexpected failure, so the
-//       manifest (mirrored in docs/timing/ledger.md) must stay exact.
+//       manifest (mirrored in docs/timing/ledger.md) must stay exact. An entry whose files are
+//       missing is not as expected, so it cannot count as an expected failure; with
+//       --allow-missing it is reported as SKIP and counted separately instead (for checkouts
+//       without the untracked krom ROMs, tests/roms/README.md).
 //
 // Manifest lines: `<id> <expect pass|fail> systemtest <rom> [seconds]` or
 //                 `<id> <expect pass|fail> screen <rom> <png> [seconds]` or
@@ -23,7 +27,9 @@
 //
 // COUNTS file lines: `x <column>` once, then `<label> <row> <hex count>`.
 
+#include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -192,20 +198,45 @@ Outcome run_kromcount(const std::string& rom, const std::string& font_path,
   return {detail.empty(), buf + detail};
 }
 
-int run_manifest(const std::string& path, const std::string& rom_dir) {
+int run_manifest(const std::string& path, const std::string& rom_dir, bool allow_missing) {
   std::ifstream in(path);
   if (!in) {
     std::fprintf(stderr, "cannot open manifest %s\n", path.c_str());
     return 2;
   }
   std::string line;
-  int bad = 0, total = 0;
+  int bad = 0, total = 0, skipped = 0;
   while (std::getline(in, line)) {
     if (auto h = line.find('#'); h != std::string::npos) line.resize(h);
     std::istringstream ss(line);
     std::string id, expect, kind;
     if (!(ss >> id >> expect >> kind)) continue;
+    // Every file argument (the tokens before an optional trailing number) must exist.
+    std::string missing;
+    {
+      std::istringstream files(line);
+      std::string tok;
+      files >> tok >> tok >> tok;
+      while (files >> tok) {
+        if (!tok.empty() && (std::isdigit(static_cast<unsigned char>(tok[0])) != 0)) continue;
+        if (!std::filesystem::exists(rom_dir + "/" + tok)) {
+          missing = tok;
+          break;
+        }
+      }
+    }
+    if (!missing.empty() && allow_missing) {
+      ++skipped;
+      std::printf("SKIP %-48s missing %s\n", id.c_str(), missing.c_str());
+      continue;
+    }
     ++total;
+    if (!missing.empty()) {
+      ++bad;
+      std::printf("BAD  %-48s expected %-4s got none  missing %s\n", id.c_str(), expect.c_str(),
+                  missing.c_str());
+      continue;
+    }
     Outcome o;
     if (kind == "systemtest") {
       std::string rom;
@@ -232,6 +263,7 @@ int run_manifest(const std::string& path, const std::string& rom_dir) {
                 o.pass ? "pass" : "fail", o.detail.c_str());
   }
   std::printf("%d entries, %d not as expected\n", total, bad);
+  if (skipped != 0) std::printf("%d entries skipped: files missing\n", skipped);
   return bad == 0 ? 0 : 1;
 }
 
@@ -264,10 +296,13 @@ int main(int argc, char** argv) {
   }
   if (argc >= 3 && std::string(argv[1]) == "manifest") {
     std::string rom_dir = ".";
-    for (int i = 3; i + 1 < argc; ++i)
-      if (std::string(argv[i]) == "--rom-dir") rom_dir = argv[i + 1];
-    return run_manifest(argv[2], rom_dir);
+    bool allow_missing = false;
+    for (int i = 3; i < argc; ++i) {
+      if (std::string(argv[i]) == "--rom-dir" && i + 1 < argc) rom_dir = argv[i + 1];
+      if (std::string(argv[i]) == "--allow-missing") allow_missing = true;
+    }
+    return run_manifest(argv[2], rom_dir, allow_missing);
   }
-  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | manifest FILE [--rom-dir DIR]\n");
+  std::fprintf(stderr, "usage: ultra_harness systemtest ROM | screen ROM PNG | kromcount ROM FONT COUNTS TOL | manifest FILE [--rom-dir DIR] [--allow-missing]\n");
   return 2;
 }

@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <random>
 
 #include "io/cic.hpp"
@@ -12,7 +13,10 @@ using namespace ultra;
 using ultra::test::boot;
 
 namespace {
-constexpr const char* kRom = "krom/CPUTest/CPU/ADD/CPUADD.N64";
+constexpr const char* kRom = ultra::test::kBootRom;
+// Carries Nintendo's 6102 IPL3; untracked, so tests that need it skip without it.
+constexpr const char* kKromRom = "krom/CPUTest/CPU/ADD/CPUADD.N64";
+bool have(const char* rel) { return std::filesystem::exists(ultra::test::rom_path(rel)); }
 Tick seconds(double s) { return static_cast<Tick>(s * static_cast<double>(kRcpClockHz)); }
 }  // namespace
 
@@ -26,6 +30,7 @@ TEST_CASE("machine: two runs of the same ROM reach identical states") {
 
 TEST_CASE("machine: a loaded save state continues exactly like the original") {
   auto a = boot(kRom, 0.3);
+  const Tick saved_at = a->now();  // run_until stops on an instruction boundary at or after 0.3 s
   const std::vector<u8> mid = a->save_state();
   a->run_until(seconds(0.6));
   const std::vector<u8> end_a = a->save_state();
@@ -36,7 +41,7 @@ TEST_CASE("machine: a loaded save state continues exactly like the original") {
   System b(SystemConfig{}, std::move(cart));
   b.power_on();
   b.load_state(mid);
-  REQUIRE(b.now() == seconds(0.3));
+  REQUIRE(b.now() == saved_at);
   b.run_until(seconds(0.6));
   CHECK(b.save_state() == end_a);
 }
@@ -52,8 +57,9 @@ TEST_CASE("machine: a save state from a different layout is rejected") {
 }
 
 TEST_CASE("machine: PI DMA copies cartridge ROM into RDRAM and raises the PI interrupt") {
-  // IPL3's own 1 MiB ROM copy runs from about 0.23 s; wait until the PI is idle.
-  auto sys = boot(kRom, 1.0);
+  ultra::test::Machine m;
+  m.park();
+  System* sys = m.sys.get();
   Pi& pi = sys->pi();
   REQUIRE_FALSE(pi.dma_busy());
   const Tick t = sys->now();
@@ -76,16 +82,23 @@ TEST_CASE("machine: PI DMA copies cartridge ROM into RDRAM and raises the PI int
 }
 
 TEST_CASE("machine: VI field period follows H_TOTAL and V_TOTAL in VI clocks") {
-  // krom programs NTSC 640x480 with H_TOTAL = 0xC15 (3094 VCLKs per line) and V_TOTAL = 0x20D:
-  // odd, so progressive, 263 lines per field (n64brew "Video Interface", VI_V_CURRENT). At
+  // NTSC 640x480 timing: H_TOTAL = 0xC15 (3094 VCLKs per line) and V_TOTAL = 0x20D: odd, so
+  // progressive, 263 lines per field (n64brew "Video Interface", VI_V_CURRENT). At
   // VCLK/MClock = 1071/1375 a field lasts 263 * 3094 * 1375 / 1071 = 1044676.3 ticks.
-  auto sys = boot(kRom, 1.0);  // krom enables the VI at about 0.53 s
-  REQUIRE(sys->vi().ctrl() != 0);
+  ultra::test::Machine m;
+  m.park();
+  System* sys = m.sys.get();
+  Vi& vi = sys->vi();
+  const Tick t = sys->now();
+  vi.write_reg(0x0440'0018, 0x20D, t);  // VI_V_SYNC (V_TOTAL)
+  vi.write_reg(0x0440'001C, 0xC15, t);  // VI_H_SYNC (H_TOTAL, no leap)
+  vi.write_reg(0x0440'0000, 0x3, t);    // VI_CTRL: 32 bpp, so the VI runs
+  REQUIRE(vi.ctrl() != 0);
   sys->run_fields(1, seconds(0.1));
   const Tick start = sys->now();
-  const u64 f0 = sys->vi().field_count();
+  const u64 f0 = vi.field_count();
   sys->run_fields(600, seconds(11.0));
-  REQUIRE(sys->vi().field_count() - f0 == 600);
+  REQUIRE(vi.field_count() - f0 == 600);
   const double per_field = static_cast<double>(sys->now() - start) / 600.0;
   // run_fields stops within one 64 Ki-tick slice of the field boundary.
   CHECK(per_field > 1044676.3 - 65536.0 / 600 - 1);
@@ -93,10 +106,12 @@ TEST_CASE("machine: VI field period follows H_TOTAL and V_TOTAL in VI clocks") {
 }
 
 TEST_CASE("cic: IPL2 checksum and detection of the 6102 IPL3s") {
-  std::string err;
-  // krom ROMs carry Nintendo's 6102 IPL3; n64-systemtest carries libdragon's open IPL3, which
-  // is built to produce the same checksum.
-  for (const char* rel : {kRom, "n64-systemtest/n64-systemtest-cpu.z64"}) {
+  // n64-systemtest carries libdragon's open IPL3, built to give the 6102 checksum; krom ROMs
+  // carry Nintendo's 6102 IPL3 and are checked when present.
+  std::vector<const char*> roms{kRom};
+  if (have(kKromRom)) roms.push_back(kKromRom);
+  for (const char* rel : roms) {
+    std::string err;
     auto cart = Cartridge::load(ultra::test::rom_path(rel), &err);
     REQUIRE(cart);
     const auto rom = cart->rom();
@@ -110,9 +125,11 @@ TEST_CASE("cic: IPL2 checksum and detection of the 6102 IPL3s") {
 }
 
 TEST_CASE("cic: derived IPL2 checksums of the 6102 IPL3 for the other seeds") {
-  // Regression values from docs/hardware/cic-algorithms.md 1.6 (derived, not hardware).
+  // Regression values from docs/hardware/cic-algorithms.md 1.6 (derived, not hardware), over
+  // Nintendo's 6102 IPL3, which only the untracked krom ROMs carry.
+  if (!have(kKromRom)) SKIP("krom ROMs not present (tests/roms/README.md)");
   std::string err;
-  auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
+  auto cart = Cartridge::load(ultra::test::rom_path(kKromRom), &err);
   REQUIRE(cart);
   const auto ipl3 = cart->rom().subspan(0x40, 0xFC0);
   CHECK(ipl2_checksum(ipl3, 0x78) == 0xD154'D024'B1BFull);
