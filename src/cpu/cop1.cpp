@@ -49,7 +49,9 @@ struct Fcsr {
 enum : u32 { kI = 1, kU = 2, kO = 4, kZ = 8, kV = 16, kE = 32 };
 
 // FCR31 write mask: FS, C, cause, enables, flags, RM. Source: n64-systemtest CFC1CTC1_31.
-constexpr u32 kFcsrWriteMask = 0x0183'FFFF;
+constexpr u32 kFcsrWriteMask = Fcsr::FS::mask | Fcsr::C::mask | Fcsr::Cause::mask |
+                               Fcsr::Enables::mask | Fcsr::Flags::mask | Fcsr::RM::mask;
+static_assert(kFcsrWriteMask == 0x0183'FFFF);
 // FCR0 as read on hardware. Source: n64-systemtest CFC1CTC1_0 ("CFC1 0 returns 0xA00"). The
 // manual (7.2.5) and n64brew "VR4300" give implementation 0x0B: ledger "fcr0-value".
 constexpr u32 kFcr0Value = 0x0000'0A00;
@@ -229,7 +231,7 @@ void Vr4300::ctc1(u32 r, u32 v) {
   // Cause bits with matching enables (or E) fire immediately (n64-systemtest
   // FireExceptionViaCTC1 / FireUnimplementedExceptionViaCTC1).
   const u32 cause = Fcsr::Cause::get(fcr31_);
-  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_) & 0x1F)) raise(ExcCode::FPE, next_instr_cop());
+  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_))) raise(ExcCode::FPE, next_instr_cop());
 }
 
 u32 Vr4300::next_instr_cop() {

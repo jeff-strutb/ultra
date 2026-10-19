@@ -168,6 +168,14 @@ struct WatchLo {
   static constexpr u32 kWriteMask = 0xFFFFFFFB;
 };
 
+// 6.3.8 WatchHi: physical address bits 35:32. 6.3.10 Parity Error: 8 diagnostic bits.
+struct WatchHi {
+  using PAddr1 = Bits<0, 4>;
+};
+struct ParityErrorReg {
+  using Diagnostic = Bits<0, 8>;
+};
+
 // 5.4.7 LLAddr: physical address bits 31:4 of the last LL, in bits 27:0.
 struct LLAddrReg {
   using FromPAddr = Bits<4, 28>;  // the field of the physical address that LLAddr holds

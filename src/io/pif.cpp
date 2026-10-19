@@ -19,6 +19,17 @@ constexpr u32 kCommandByte = 0x3F;
 constexpr u32 kChecksumOffset = 0x32;
 constexpr u32 kChallengeOffset = 0x30;
 
+// Joybus frame in PIF RAM (n64brew "PIF-NUS", Joybus frame): per channel either an escape
+// byte or a TX length byte, an RX length byte, TX bytes and RX bytes. RX bit 7 reports "no
+// device"; TX bit 7 marks a channel to skip.
+constexpr u32 kJoybusChannels = 5;
+constexpr u8 kJoybusSkipChannel = 0x00;
+constexpr u8 kJoybusResetChannel = 0xFD;
+constexpr u8 kJoybusEndFrame = 0xFE;
+constexpr u8 kJoybusNop = 0xFF;
+using JoybusLen = Bits<0, 6, u8>;
+using JoybusFlag = Bit<7, u8>;  // TX: skip; RX: no device
+
 // The PIF halts the console if boot is not terminated "before 5 seconds from boot".
 // Derived: n64brew "PIF-NUS", command 0x08. Exact firmware count is a Guess (ledger "pif-boot-timeout").
 constexpr Tick kBootTimeoutTicks = 5 * kRcpClockHz;
@@ -136,16 +147,16 @@ void Pif::run_joybus() {
   // Source: n64brew "PIF-NUS", Joybus frame.
   u32 p = 0;
   u32 channel = 0;
-  while (p < kRamBytes - 1 && channel < 5) {
+  while (p < kRamBytes - 1 && channel < kJoybusChannels) {
     const u8 tx = ram_[p];
-    if (tx == 0xFE) break;
-    if (tx == 0xFF) { ++p; continue; }
-    if (tx == 0x00 || tx == 0xFD) { ++p; ++channel; continue; }
+    if (tx == kJoybusEndFrame) break;
+    if (tx == kJoybusNop) { ++p; continue; }
+    if (tx == kJoybusSkipChannel || tx == kJoybusResetChannel) { ++p; ++channel; continue; }
     if (p + 1 >= kRamBytes) break;
-    const u32 txn = tx & 0x3F;
-    const u32 rxn = ram_[p + 1] & 0x3F;
+    const u32 txn = JoybusLen::get(tx);
+    const u32 rxn = JoybusLen::get(ram_[p + 1]);
     if (p + 2 + txn + rxn > kRamBytes) break;
-    if (!(tx & 0x80)) ram_[p + 1] = static_cast<u8>(rxn | 0x80);
+    if (!JoybusFlag::test(tx)) ram_[p + 1] = static_cast<u8>(rxn | JoybusFlag::mask);
     p += 2 + txn + rxn;
     ++channel;
   }

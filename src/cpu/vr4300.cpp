@@ -613,7 +613,7 @@ bool Vr4300::bus_read(Master m, u32 paddr, u32 size, u8* out) {
 
 bool Vr4300::bus_write(Master m, u32 paddr, u32 size, const u8* data) {
   // A full buffer stalls the pipeline until the oldest entry has completed (4.9).
-  if (wb_count_ == 4) {
+  if (wb_count_ == wb_.size()) {
     if (!wb_issue_head()) return false;
     stall_until_tick(sysad_free_);
   }
@@ -887,12 +887,12 @@ void Vr4300::cop0_set(u32 reg, u64 v) {
       break;
     case LLAddr: lladdr_ = w; break;
     case WatchLo: watch_lo_ = w & WatchLo::kWriteMask; break;
-    case WatchHi: watch_hi_ = w & 0xF; break;
+    case cop0::WatchHi: watch_hi_ = cop0::WatchHi::PAddr1::get(w); break;
     case XContext:
       xcontext_ = (xcontext_ & (XContext::BadVPN2::mask | XContext::R::mask)) |
                   (v & XContext::PTEBase::mask);
       break;
-    case ParityError: parity_error_ = w & 0xFF; break;
+    case ParityError: parity_error_ = ParityErrorReg::Diagnostic::get(w); break;
     case CacheError: break;
     case TagLo: tag_lo_ = w & TagLo::kWriteMask; break;
     case TagHi: tag_hi_ = 0; break;  // RFU, reads zero (5.4.8)

@@ -16,6 +16,8 @@ constexpr u32 kMiVersion = 0x0202'0102;
 constexpr u32 kRdramRegSpace = 0x03F0'0000;
 
 enum class MiReg : u32 { Mode = 0x0, Version = 0x4, Interrupt = 0x8, Mask = 0xC };
+// Register offset within the MI block: 4 registers, mirrored every 16 bytes.
+constexpr u32 kMiRegOffsetMask = 0xC;
 
 // RDRAM moves 8-byte words (octbytes); a 32-bit access uses the half that Addr[2] selects
 // (n64brew "MIPS Interface", MI's Mode).
@@ -44,7 +46,7 @@ void Mi::lower(MiIntr i) noexcept {
 u32 Mi::read_reg(u32 paddr) {
   // Only the low 4 address bits are decoded (n64brew "MIPS Interface": "Accesses beyond
   // 0x0430 0010 are mirrored").
-  switch (static_cast<MiReg>(paddr & 0xC)) {
+  switch (static_cast<MiReg>(paddr & kMiRegOffsetMask)) {
     case MiReg::Mode: return mode_;
     case MiReg::Version: return kMiVersion;
     case MiReg::Interrupt: return intr_;
@@ -54,7 +56,7 @@ u32 Mi::read_reg(u32 paddr) {
 }
 
 void Mi::write_reg(u32 paddr, u32 v) {
-  switch (static_cast<MiReg>(paddr & 0xC)) {
+  switch (static_cast<MiReg>(paddr & kMiRegOffsetMask)) {
     case MiReg::Mode: {
       using W = MiModeWrite;
       using R = MiModeRead;
