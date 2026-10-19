@@ -69,14 +69,17 @@ void Vr4300::execute(u32 instr) {
   auto write_rt = [&](u64 v) {
     if (rt(instr)) rt_ref = v;
   };
+  // The offset is added to the address of the instruction fetched after the branch (pc_), which
+  // is the branch address + 4 except for a branch in another jump's delay slot, where it is
+  // the outer jump's target (docs/hardware/cpu.md, Integer quirks).
   auto branch = [&](bool taken) {
     branch_pending_ = true;
-    if (taken) npc_ = cur_pc_ + 4 + (simm(instr) << 2);
+    if (taken) npc_ = pc_ + (simm(instr) << 2);
   };
   auto branch_likely = [&](bool taken) {
     if (taken) {
       branch_pending_ = true;
-      npc_ = cur_pc_ + 4 + (simm(instr) << 2);
+      npc_ = pc_ + (simm(instr) << 2);
     } else {
       // Not taken: the delay slot is nullified.
       pc_ = npc_;
@@ -88,7 +91,7 @@ void Vr4300::execute(u32 instr) {
   switch (op) {
     case OP_SPECIAL: exec_special(instr); return;
     case OP_REGIMM: exec_regimm(instr); return;
-    case OP_J:
+    case OP_J:  // region from this jump's address + 4: ledger "jump-region-in-delay-slot"
       branch_pending_ = true;
       npc_ = ((cur_pc_ + 4) & ~u64{0x0FFF'FFFF}) | (u64{target(instr)} << 2);
       return;
@@ -592,7 +595,7 @@ void Vr4300::exec_regimm(u32 instr) {
     if (link) gpr_[31] = pc_ + 4;
     if (taken) {
       branch_pending_ = true;
-      npc_ = cur_pc_ + 4 + (imm_s << 2);
+      npc_ = pc_ + (imm_s << 2);  // relative to the next fetch address, as in execute()
     } else if (likely) {
       pc_ = npc_;
       npc_ += 4;

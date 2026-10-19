@@ -221,3 +221,104 @@ TEST_CASE("cpu: an uncached RCP register read stalls for the SysAD round trip") 
   CHECK(d >= 22);
   CHECK(d <= 24);
 }
+
+TEST_CASE("cpu: a branch in a jump's delay slot offsets from the jump target") {
+  // Hardware adds a branch's offset to the address of the instruction fetched after it, which is
+  // the outer jump's target here, and links past that address (n64-systemtest BEQWithinDelay,
+  // BGEZALWithinDelayOfBEQ). Each landing instruction sets one bit of t0.
+  Machine m;
+  Assembler a(Machine::kCodeBase);
+  const auto outer = a.new_label(), inner = a.new_label(), end = a.new_label();
+  a.move(t0, zero);
+  a.j(outer);
+  a.bgezal(zero, inner);  // delay slot: taken, offset 8 words from the slot after it
+  for (int i = 0; i < 5; ++i) a.nop();
+  a.bind(outer);
+  a.ori(t0, t0, 1);       // the outer target executes as the branch's delay slot
+  a.ori(t0, t0, 2);
+  a.ori(t0, t0, 4);
+  a.bind(inner);          // the branch's nominal target (branch address + 4 + offset)
+  for (u32 bit = 3; bit <= 9; ++bit) a.ori(t0, t0, static_cast<u16>(1u << bit));
+  a.bind(end);
+  a.b(end);
+  a.nop();
+  m.load(a.finish());
+  REQUIRE(m.run_to(a.address_of(end)));
+  // Offset = inner - (branch + 4) = 8 words; from outer that lands on the bit-8 ORI.
+  CHECK(m.gpr(t0) == (1u | 256u | 512u));
+  CHECK(m.gpr(ra) == a.address_of(outer) + 4);
+}
+
+TEST_CASE("cpu: a Wired write resets Random two instructions later") {
+  // n64-systemtest RandomDecrement / RandomReadEarly: MFC0 Random right after MTC0 Wired reads
+  // the old sequence, one instruction later reads 31, and it decrements once per instruction.
+  Machine m;
+  Assembler a(Machine::kCodeBase);
+  const auto end = a.new_label();
+  a.li(t1, 20);
+  a.li(t3, 5);
+  a.mtc0(zero, cop0::Wired);
+  a.nop();
+  a.nop();
+  a.mfc0(s0, cop0::Random);  // 3rd after the write: one decrement
+  a.mtc0(t1, cop0::Wired);
+  for (int i = 0; i < 11; ++i) a.nop();
+  a.mfc0(s1, cop0::Random);  // 12th: 31 - 10
+  a.nop();
+  a.nop();
+  a.mtc0(t3, cop0::Wired);
+  a.mfc0(s2, cop0::Random);  // 1st: old sequence, wrapped at Wired 20: 21, 20, 31, 30, 29
+  a.mtc0(t1, cop0::Wired);
+  a.nop();
+  a.mfc0(s3, cop0::Random);  // 2nd: reset
+  a.bind(end);
+  a.b(end);
+  a.nop();
+  m.load(a.finish());
+  REQUIRE(m.run_to(a.address_of(end)));
+  CHECK(m.gpr(s0) == 30);
+  CHECK(m.gpr(s1) == 21);
+  CHECK(m.gpr(s2) == 29);
+  CHECK(m.gpr(s3) == 31);
+}
+
+TEST_CASE("cpu: an FPE raised by CTC1 takes Cause.CE from the next instruction") {
+  // n64-systemtest FireExceptionViaCTC1 (CE 0 after NOP) and ...FollowedByMFC1 / MFC2 (CE 1 / 2).
+  Machine m;
+  Assembler a(Machine::kCodeBase);
+  const auto end = a.new_label();
+  auto mfc2 = [&](Reg rt, u32 rd) { a.word((0x12u << 26) | (u32{rt} << 16) | (rd << 11)); };
+  // Handler: record Cause, clear FCSR, return past the CTC1 and the instruction after it.
+  Assembler h(0xFFFF'FFFF'8000'0180ull);
+  h.mfc0(k0, cop0::Cause);
+  h.ctc1(zero, 31);
+  h.dmfc0(k1, cop0::EPC);
+  h.daddiu(k1, k1, 8);
+  h.dmtc0(k1, cop0::EPC);
+  h.nop();
+  h.nop();
+  h.eret();
+  const auto handler = h.finish();
+  for (usize i = 0; i < handler.size(); ++i) m.poke32(0x180 + static_cast<u32>(i) * 4, handler[i]);
+  a.li(t0, 0x8000'0180);
+  a.cache(0x00, 0, t0);  // drop any stale I-cache line over the handler
+  a.li(t1, (1u << 9) | (1u << 14));  // FCSR Enable.V and Cause.V: fires on write
+  a.ctc1(t1, 31);
+  a.nop();
+  a.move(s0, k0);
+  a.ctc1(t1, 31);
+  a.mfc1(zero, 0);
+  a.move(s1, k0);
+  a.ctc1(t1, 31);
+  mfc2(zero, 0);
+  a.move(s2, k0);
+  a.bind(end);
+  a.b(end);
+  a.nop();
+  m.load(a.finish());
+  REQUIRE(m.run_to(a.address_of(end)));
+  constexpr u64 kFpe = 15u << 2;
+  CHECK((m.gpr(s0) & 0x3000'00FCull) == kFpe);
+  CHECK((m.gpr(s1) & 0x3000'00FCull) == (kFpe | (1u << 28)));
+  CHECK((m.gpr(s2) & 0x3000'00FCull) == (kFpe | (2u << 28)));
+}

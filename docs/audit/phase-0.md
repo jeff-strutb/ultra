@@ -396,3 +396,15 @@ proven it.
   `progress.py --check` already ignores the snapshot date (checked with a backdated README; exit
   0). Not done: the `clang-tidy` config (clang-tidy is not installed on this host), and the
   workflow has not yet run on GitHub.
+- **2026-10-19, F3 (partly).** n64-systemtest's Timing, Cycle and CP0-hazards groups now run in
+  the gate: `n64-systemtest-cpu.z64` is rebuilt from the same tree with those features (the
+  default-feature build reproduces the previous ROM byte for byte). The harness previously
+  read only the "Base" summary line, so it would have passed this ROM with failures; it now
+  requires every reported group to pass, and `--log` writes the ROM's output. All 9 tests in
+  those groups failed at first, from three defects, each now fixed with a unit test that fails
+  on the old code: a conditional branch in a jump's delay slot offset from its own address
+  instead of the outer target (4 tests); a Wired write reset Random one instruction early
+  (3); an FPE raised by CTC1 did not take Cause.CE from the next instruction (2). Result:
+  3417 of 3417. The behaviour beyond what the ROM measures is ledgered (`cause-ce-next-instr`,
+  `jump-region-in-delay-slot`). Not done: the five-stage pipeline model and the krom timing
+  residual (`cpu-timing-residual`, F5).

@@ -60,8 +60,8 @@ gate, about two minutes). Do not hand-edit it.
 _Snapshot 2026-10-19._
 
 ```
-n64-systemtest  CPU, COP0, TLB, COP1 (Phase 0 scope)
-    ████████████████████████████████████████  100.0%   3,408 / 3,408 tests pass
+n64-systemtest  CPU, COP0, TLB, COP1 (Phase 0 scope; base, timing, cycle, CP0 hazards)
+    ████████████████████████████████████████  100.0%   3,417 / 3,417 tests pass
 krom CPUTest   framebuffer identical to the hardware screenshot
     ████████████████████████████████░░░░░░░░   81.2%   91 / 112 ROMs
 krom timing    loop counts vs hardware (CPU and CP1 TIMINGNTSC)
@@ -74,7 +74,7 @@ krom timing    loop counts vs hardware (CPU and CP1 TIMINGNTSC)
 |---|---|
 | Measured | 1 |
 | Derived | 4 |
-| Guess | 27 |
+| Guess | 29 |
 | Open | 1 |
 | Design | 1 |
 <!-- STATUS:END -->
@@ -179,7 +179,8 @@ host is Linux x86-64.
 
 ```
 tests/roms/n64-systemtest/   lemmy-64/n64-systemtest @196f542, MIT
-    n64-systemtest-cpu.z64   Phase 0 gate (RSP and RDP groups removed by phase0-cpu-scope.patch)
+    n64-systemtest-cpu.z64   Phase 0 gate (RSP and RDP groups removed by phase0-cpu-scope.patch;
+                             Timing, Cycle and CP0-hazards groups built in)
     n64-systemtest-full.z64  unmodified, for Phase 1
 tests/roms/krom/CPUTest/     PeterLemon/N64 @7085543, Unlicense, with reference screenshots
 ```

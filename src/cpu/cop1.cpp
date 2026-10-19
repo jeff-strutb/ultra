@@ -228,7 +228,18 @@ void Vr4300::ctc1(u32 r, u32 v) {
   // Cause bits with matching enables (or E) fire immediately (n64-systemtest
   // FireExceptionViaCTC1 / FireUnimplementedExceptionViaCTC1).
   const u32 cause = Fcsr::Cause::get(fcr31_);
-  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_) & 0x1F)) raise(ExcCode::FPE);
+  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_) & 0x1F)) raise(ExcCode::FPE, next_instr_cop());
+}
+
+u32 Vr4300::next_instr_cop() {
+  // The exception is taken with the next instruction already fetched and decoded, and Cause.CE
+  // takes its coprocessor number when it is a COPz instruction, else 0 (n64-systemtest
+  // FireExceptionViaCTC1FollowedByMFC1 / ...MFC2; docs/hardware/cpu.md). pc_ is the next
+  // fetch address (the branch target when CTC1 is in a delay slot). A fault on that fetch is
+  // never taken, since the older CTC1's exception wins. Other cases: ledger "cause-ce-next-instr".
+  u32 next;
+  if (!fetch(pc_, next, false)) return 0;
+  return is_copz(next) ? cop_num(next) : 0;
 }
 
 bool Vr4300::fpu_check_usable() {

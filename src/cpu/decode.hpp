@@ -33,4 +33,11 @@ constexpr u32 ft(u32 i) noexcept { return Ft::get(i); }
 constexpr u32 fs(u32 i) noexcept { return Fs::get(i); }
 constexpr u32 fd(u32 i) noexcept { return Fd::get(i); }
 
+// COPz instructions (16.2, Table 16-1): opcode 0100zz, z = the coprocessor number.
+using OpGroup = Bits<28, 4>;
+using CopNum = Bits<26, 2>;
+inline constexpr u32 kOpGroupCopz = 0b0100;
+constexpr bool is_copz(u32 i) noexcept { return OpGroup::get(i) == kOpGroupCopz; }
+constexpr u32 cop_num(u32 i) noexcept { return CopNum::get(i); }
+
 }  // namespace ultra::decode

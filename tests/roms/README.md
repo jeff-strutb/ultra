@@ -12,10 +12,13 @@ every expected failure are explained in `docs/timing/ledger.md`.
   links libdragon's open-source IPL3.
 - `n64-systemtest-full.z64` (sha256 `d161ce45…dacb8ed`): unmodified build. Its RSP tests wait
   for an RSP, so it does not finish before Phase 1.
-- `n64-systemtest-cpu.z64` (sha256 `60df9940…6f0f3a2`): built with
+- `n64-systemtest-cpu.z64` (sha256 `40a6f815…6c35433`): built with
   `phase0-cpu-scope.patch`, which only removes the RSP and RDP test groups from
-  `src/tests/testlist.rs`. This is the Phase 0 gate ROM (CPU, COP0, TLB, COP1, MI, PI, SP and
-  PIF memory tests).
+  `src/tests/testlist.rs`, and `cargo run --release --features base,timing,cycle,cop0hazard`,
+  which adds the Timing, Cycle and CP0-hazards groups that the default build leaves out. This
+  is the Phase 0 gate ROM (CPU, COP0, TLB, COP1, MI, PI, SP and PIF memory tests); the harness
+  requires every group it reports to pass. The same tree with default features gives sha256
+  `60df9940…6f0f3a2` (the previous gate ROM).
 - Upstream marks the project as superseded by nemu64-test; the tests used here are unchanged.
 
 ## krom (PeterLemon/N64) CPUTest

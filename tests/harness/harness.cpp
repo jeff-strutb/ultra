@@ -1,8 +1,9 @@
 // ultra_harness: boots ROMs headless and checks them against their oracles.
 //
-//   ultra_harness systemtest ROM [--seconds S]
-//       Runs n64-systemtest until it prints its summary. Passes when it reports
-//       "Base: Failed 0 of N" (the ROM ran to its end and every test passed).
+//   ultra_harness systemtest ROM [--seconds S] [--log FILE]
+//       Runs n64-systemtest until it prints its summary. Passes when every category it reports
+//       ("Base: Failed 0 of N", and Timing / Cycle / CP0-hazards when built in) has no failures.
+//       --log FILE writes everything the ROM printed (its failure messages give the values).
 //   ultra_harness screen ROM PNG [--seconds S]
 //       Runs the ROM and compares the framebuffer as presented (Vi::capture_presented: the
 //       displayed region scaled and resampled to the reference's size) with the reference image.
@@ -60,7 +61,7 @@ std::unique_ptr<System> boot(const std::string& rom, std::string& err) {
   return sys;
 }
 
-Outcome run_systemtest(const std::string& rom, double seconds) {
+Outcome run_systemtest(const std::string& rom, double seconds, const std::string& log = {}) {
   std::string err;
   auto sys = boot(rom, err);
   if (!sys) return {false, err};
@@ -71,17 +72,26 @@ Outcome run_systemtest(const std::string& rom, double seconds) {
     sys->run_until(std::min(limit, sys->now() + step));
     if (out.find("Slowest tests") != std::string::npos) break;
   }
-  std::smatch m;
-  static const std::regex kSummary(R"(Base: Failed (\d+) of (\d+) tests)");
-  if (!std::regex_search(out, m, kSummary))
+  if (!log.empty()) std::ofstream(log, std::ios::binary) << out;
+  // One summary line per test category the build includes (Base, and Timing, Cycle,
+  // CP0-hazards when built with those features). Every category must report no failures.
+  static const std::regex kSummary(R"(([A-Za-z0-9-]+): Failed (\d+) of (\d+) tests)");
+  std::string summary;
+  bool all_passed = true, have_base = false;
+  for (auto it = std::sregex_iterator(out.begin(), out.end(), kSummary); it != std::sregex_iterator(); ++it) {
+    const auto& m = *it;
+    if (m[1] == "Base") have_base = true;
+    if (m[2] != "0") all_passed = false;
+    summary += (summary.empty() ? "" : ", ") + m[1].str() + " failed " + m[2].str() + " of " + m[3].str();
+  }
+  if (!have_base)
     return {false, "no summary (did not run to the end); cpu " + std::string(sys->cpu().frozen() ? "frozen" : "running")};
-  const std::string failed = m[1], total = m[2];
   // Collect the names of failing tests for the report.
   std::string names;
   static const std::regex kFail(R"(Test '([^']+)'[^\n]* failed)");
   for (auto it = std::sregex_iterator(out.begin(), out.end(), kFail); it != std::sregex_iterator(); ++it)
     names += "\n    " + (*it)[1].str();
-  return {failed == "0", "Failed " + failed + " of " + total + names};
+  return {all_passed, summary + names};
 }
 
 Outcome run_screen(const std::string& rom, const std::string& png, double seconds,
@@ -277,7 +287,10 @@ double opt_seconds(int argc, char** argv, double def) {
 
 int main(int argc, char** argv) {
   if (argc >= 3 && std::string(argv[1]) == "systemtest") {
-    Outcome o = run_systemtest(argv[2], opt_seconds(argc, argv, 60));
+    std::string log;
+    for (int i = 3; i + 1 < argc; ++i)
+      if (std::string(argv[i]) == "--log") log = argv[i + 1];
+    Outcome o = run_systemtest(argv[2], opt_seconds(argc, argv, 60), log);
     std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
     return o.pass ? 0 : 1;
   }

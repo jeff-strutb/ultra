@@ -83,8 +83,10 @@ five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruct
 - TLBWI/TLBWR store PageMask per bit pair (each pair takes its upper bit), EntryLo masked to
   PFN, C, D, V, G (0x03FFFFFF) ([st] `tlb` "PageMask after TLBWI/TLBR", "EntryLo0/1/Hi after
   TLBWI/TLBR"); G reads back in both EntryLo registers ([UM] 5.3.1).
-- Random counts down from 31 to Wired once per retired instruction ([UM] 5.4.2); writing Wired
-  makes Random read 31 from the next instruction.
+- Random counts down from 31 to Wired once per retired instruction ([UM] 5.4.2). Writing Wired
+  resets it to 31 as read by the second instruction after the MTC0; the first still reads the
+  old sequence, wrapping at the old Wired ([st] `cop0` RandomDecrement, RandomMasking,
+  RandomReadEarly).
 - On address errors and TLB exceptions BadVAddr, Context.BadVPN2 and XContext (BadVPN2, R) are
   written, also for address errors ([st] `tlb64` "LW TLB Miss or Address Exception", "LW with
   address not sign extended"). Partial loads/stores (LWL/LWR/LDL/LDR/SWL/SWR/SDL/SDR) translate
@@ -106,6 +108,11 @@ five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruct
 - EPC and Cause.BD are written only when EXL = 0; EPC points at the branch when the faulting
   instruction is in a delay slot ([UM] 6.3.6, 6.3.7).
 - Count == Compare sets Cause.IP7; writing Compare clears it ([UM] 6.3.4).
+- An FPE raised by CTC1 (a FCSR write with a cause bit enabled, or E) sets Cause.CE to the
+  coprocessor number of the next instruction when it is a COPz instruction, else 0; when CTC1
+  is in a delay slot, the next instruction is the branch target ([st] `cop1`
+  FireExceptionViaCTC1, ...FollowedByMFC1, ...FollowedByMFC2, ...Delay). Other cases: ledger
+  `cause-ce-next-instr`.
 - Interrupt pins: Int0 = RCP (MI), Int2 = PIF pre-NMI ([n64brew] "PIF-NUS").
 - Watch: WatchLo.PAddr0 compares physical address bits 31:3 for loads (R) and stores (W);
   deferred while EXL is set ([UM] 6.4.17).
@@ -120,6 +127,7 @@ five-stage pipeline (IC RF EX DC WB) would take. Base cost 1 PClock per instruct
 | MULT multiplies 64-bit rs by rt sign-extended from bit 34; DIV divides the 32-bit dividend by a divisor sign-extended from bit 34; DIV by zero gives LO = (n < 0 ? 1 : −1), HI = n | [n64brew] "VR4300", Sign extension bugs |
 | LWR that does not include the word's most significant byte keeps the upper 32 bits of rt; only a full-word LWR sign-extends | [UM] LWR ("the remaining portion of the register is not affected"); [st] `tlb64` load matrix |
 | JAL/JALR/BxxAL link to the instruction after the delay slot, also when the jump itself is in a delay slot | [UM] chapter 16; [st] `jumps` |
+| A conditional branch adds its offset to the address of the instruction fetched after it, and BxxAL links to that address + 4. That is the branch address + 4, except for a branch in another jump's or branch's delay slot, where it is the outer target. J/JAL in that position: ledger `jump-region-in-delay-slot` | [st] `jumps/conditionals.rs` BEQWithinDelay, BEQWithinDelayOfJR, BGEZALWithinDelay, BGEZALWithinDelayOfBEQ |
 | Status.RE in user mode reverses endianness: data addresses XOR (8 − size) for sub-doubleword accesses, instruction fetches XOR 4 | [UM] 6.3.5; [st] `endian_re` |
 | COP2 with CU2 = 1: MFC2/DMFC2/MTC2/DMTC2 and LWC2/LDC2/SWC2/SDC2 move through one 64-bit latch; CFC2/CTC2 do nothing; anything else is RI with Cause.CE = 2. COP3 is RI with CE = 0 | [st] `cop_unusable` (COP2MFCBehavior, COP2LWC2Behavior) |
 

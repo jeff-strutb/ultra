@@ -36,17 +36,21 @@ def manifest_kinds(path):
     return kinds
 
 
-def run_gate(build):
-    harness = ROOT / build / "tests" / "ultra_harness"
-    if not harness.exists():
-        sys.exit(f"{harness} not found: build the preset first")
-    out = subprocess.run(
-        [str(harness), "manifest", str(ROOT / "tests/roms/manifest.txt"),
-         "--rom-dir", str(ROOT / "tests/roms")],
-        capture_output=True, text=True)
+def run_gate(build, saved=None):
+    if saved:
+        stdout, stderr = pathlib.Path(saved).read_text(), ""
+    else:
+        harness = ROOT / build / "tests" / "ultra_harness"
+        if not harness.exists():
+            sys.exit(f"{harness} not found: build the preset first")
+        out = subprocess.run(
+            [str(harness), "manifest", str(ROOT / "tests/roms/manifest.txt"),
+             "--rom-dir", str(ROOT / "tests/roms")],
+            capture_output=True, text=True)
+        stdout, stderr = out.stdout, out.stderr
     rows = {}
     summary = None
-    for line in out.stdout.splitlines():
+    for line in stdout.splitlines():
         m = re.match(r"(ok|BAD)\s+(\S+)\s+expected (\w+)\s+got (\w+)\s+(.*)", line)
         if m:
             rows[m.group(2)] = (m.group(1) == "ok", m.group(4) == "pass", m.group(5))
@@ -54,7 +58,7 @@ def run_gate(build):
         if m:
             summary = (int(m.group(1)), int(m.group(2)))
     if summary is None:
-        sys.exit("harness produced no summary:\n" + out.stdout + out.stderr)
+        sys.exit("harness produced no summary:\n" + stdout + stderr)
     return rows, summary
 
 
@@ -74,8 +78,9 @@ def ledger_counts(path):
 def render(rows, summary, kinds, ledger, expected_fail):
     entries, bad = summary
     st = next(d for i, (_, _, d) in rows.items() if kinds[i][1] == "systemtest")
-    m = re.search(r"Failed (\d+) of (\d+)", st)
-    st_fail, st_total = int(m.group(1)), int(m.group(2))
+    # One "<group> failed N of M" per test group the ROM was built with.
+    groups = re.findall(r"[\w-]+ failed (\d+) of (\d+)", st.split("\n")[0])
+    st_fail, st_total = sum(int(f) for f, _ in groups), sum(int(t) for _, t in groups)
     screens = [(i, r) for i, r in rows.items() if kinds[i][1] == "screen"]
     screens_pass = sum(1 for _, r in screens if r[1])
     timing = [(i, r) for i, r in rows.items() if kinds[i][1] == "kromcount"]
@@ -86,7 +91,7 @@ def render(rows, summary, kinds, ledger, expected_fail):
 
     lines = [BEGIN, f"_Snapshot {datetime.date.today().isoformat()}._", "", "```"]
     lines += [
-        "n64-systemtest  CPU, COP0, TLB, COP1 (Phase 0 scope)",
+        "n64-systemtest  CPU, COP0, TLB, COP1 (Phase 0 scope; base, timing, cycle, CP0 hazards)",
         f"    {bar(st_total - st_fail, st_total)}  {100 * (st_total - st_fail) / st_total:5.1f}%"
         f"   {st_total - st_fail:,} / {st_total:,} tests pass",
         "krom CPUTest   framebuffer identical to the hardware screenshot",
@@ -116,9 +121,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default="build/release")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--from", dest="saved", help="read a saved `ultra_harness manifest` output "
+                    "instead of running the gate")
     args = ap.parse_args()
     kinds = manifest_kinds(ROOT / "tests/roms/manifest.txt")
-    rows, summary = run_gate(args.build)
+    rows, summary = run_gate(args.build, args.saved)
     ledger, expected_fail = ledger_counts(ROOT / "docs/timing/ledger.md")
     block = render(rows, summary, kinds, ledger, expected_fail)
     readme = ROOT / "README.md"

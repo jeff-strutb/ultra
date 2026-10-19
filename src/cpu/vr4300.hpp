@@ -137,14 +137,19 @@ class Vr4300 {
   void exec_cop2(u32 instr);
   void exec_cache(u32 instr);
 
-  bool fetch(u64 vaddr, u32& instr);
-  bool translate(u64 vaddr, Access acc, Translation& out);
-  bool tlb_translate(u64 vaddr, Access acc, Translation& out);
+  // `report` false: an address or TLB fault fails without raising (the instruction behind
+  // one that takes an exception is discarded, so its fetch fault is never taken).
+  bool fetch(u64 vaddr, u32& instr, bool report = true);
+  // `report` false: fail without raising the exception (a fetch the pipeline discards).
+  bool translate(u64 vaddr, Access acc, Translation& out, bool report = true);
+  bool tlb_translate(u64 vaddr, Access acc, Translation& out, bool report = true);
   void tlb_refresh_entry(u32 i);
   void tlb_probe();
   void tlb_read();
   void tlb_write(u32 index);
   u32 random_reg() const noexcept;
+  // Random after `n` instructions counting down from 31 with the given Wired.
+  static u32 random_value(u64 n, u32 wired) noexcept;
 
   // Data access. Return false after raising an exception.
   bool load_bytes(u64 vaddr, u32 size, u8* out_word, u32 lane_bytes);
@@ -181,6 +186,8 @@ class Vr4300 {
 
   // Exceptions.
   void raise(cop0::ExcCode code, u32 ce = 0);
+  // Cause.CE for an exception raised by CTC1: from the instruction behind it.
+  u32 next_instr_cop();
   void raise_address_error(u64 vaddr, Access acc);
   void raise_tlb(u64 vaddr, Access acc, bool miss, bool modification);
   u64 exception_vector(bool tlb_refill, bool xtlb) const noexcept;
@@ -252,7 +259,14 @@ class Vr4300 {
   u64 context_ = 0;
   u32 page_mask_ = 0;
   u32 wired_ = 0;
-  u64 random_base_ = 0;  // retired-instruction count when Random was last reset to 31
+  // Retired-instruction count from which Random counts down from 31. A Wired write moves it
+  // kRandomResetDelay instructions ahead; reads before then continue the previous sequence.
+  u64 random_base_ = 0;
+  u64 random_prev_base_ = 0;
+  u32 random_prev_wired_ = 0;
+  // Source: n64-systemtest src/tests/cop0/mod.rs RandomDecrement and RandomReadEarly (MTC0
+  // Wired, then MFC0 Random: 1 instruction later reads the old sequence, 2 later reads 31).
+  static constexpr u64 kRandomResetDelay = 2;
   u64 badvaddr_ = 0;
   u64 count_offset_ = 0; // Count = (cycles_ >> 1) + count_offset_ (mod 2^32)
   u64 entry_hi_ = 0;

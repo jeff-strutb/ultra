@@ -44,7 +44,8 @@ void Vr4300::cold_reset() {
   status_ = (status_ & ~(Status::TS::mask | Status::SR::mask | Status::RP::mask)) |
             Status::BEV::mask | Status::ERL::mask;
   wired_ = 0;
-  random_base_ = retired_;
+  random_base_ = random_prev_base_ = retired_;
+  random_prev_wired_ = 0;
   config_ = Config::kFixed | Config::EC::place(Config::kEcNintendo) | Config::BE::mask |
             (config_ & (Config::K0::mask | Config::CU::mask));
   error_epc_ = pc_;
@@ -264,13 +265,13 @@ void Vr4300::eret() {
 
 // ---- address translation ---------------------------------------------------------------------
 
-bool Vr4300::translate(u64 vaddr, Access acc, Translation& out) {
+bool Vr4300::translate(u64 vaddr, Access acc, Translation& out, bool report) {
   const bool k = kernel_mode();
   const bool s = supervisor_mode();
   if (!addr64()) {
     // 32-bit addressing: the address must be a sign-extended 32-bit value.
     if (vaddr != sext32(lo32(vaddr))) {
-      raise_address_error(vaddr, acc);
+      if (report) raise_address_error(vaddr, acc);
       return false;
     }
     const u32 a = lo32(vaddr);
@@ -280,7 +281,7 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out) {
         out = {a, false};
         return true;
       }
-      return tlb_translate(vaddr, acc, out);
+      return tlb_translate(vaddr, acc, out, report);
     }
     if (k) {
       if (a < 0xA000'0000u) {
@@ -291,10 +292,10 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out) {
         out = {a - 0xA000'0000u, false};
         return true;
       }
-      return tlb_translate(vaddr, acc, out);
+      return tlb_translate(vaddr, acc, out, report);
     }
-    if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out);
-    raise_address_error(vaddr, acc);
+    if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out, report);
+    if (report) raise_address_error(vaddr, acc);
     return false;
   }
 
@@ -307,10 +308,10 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out) {
         out = {lo32(vaddr), false};
         return true;
       }
-      return tlb_translate(vaddr, acc, out);
+      return tlb_translate(vaddr, acc, out, report);
     }
   } else if (region == 1) {
-    if ((k || s) && vaddr - 0x4000'0000'0000'0000ull < k1TiB) return tlb_translate(vaddr, acc, out);
+    if ((k || s) && vaddr - 0x4000'0000'0000'0000ull < k1TiB) return tlb_translate(vaddr, acc, out, report);
   } else if (region == 2) {
     if (k && ((vaddr >> 32) & 0x07FF'FFFF) == 0) {
       const u32 cca = static_cast<u32>((vaddr >> 59) & 7);
@@ -329,14 +330,14 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out) {
           out = {a - 0xA000'0000u, false};
           return true;
         }
-        return tlb_translate(vaddr, acc, out);
+        return tlb_translate(vaddr, acc, out, report);
       }
-      if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out);
+      if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out, report);
     } else if (k && vaddr <= 0xC000'00FF'7FFF'FFFFull) {
-      return tlb_translate(vaddr, acc, out);
+      return tlb_translate(vaddr, acc, out, report);
     }
   }
-  raise_address_error(vaddr, acc);
+  if (report) raise_address_error(vaddr, acc);
   return false;
 }
 
@@ -348,7 +349,7 @@ void Vr4300::tlb_refresh_entry(u32 i) {
   e.global = EntryLo::G::test(e.entry_lo0) && EntryLo::G::test(e.entry_lo1);
 }
 
-bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out) {
+bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out, bool report) {
   const u64 asid = EntryHi::ASID::get(entry_hi_);
   int match = -1;
   for (u32 i = 0; i < 32; ++i) {
@@ -359,18 +360,18 @@ bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out) {
     break;
   }
   if (match < 0) {
-    raise_tlb(vaddr, acc, true, false);
+    if (report) raise_tlb(vaddr, acc, true, false);
     return false;
   }
   const TlbEntry& e = tlb_[static_cast<u32>(match)];
   const u64 page_bytes = (u64{e.page_mask} >> 1 | 0xFFF) + 1;
   const u64 lo = (vaddr & page_bytes) ? e.entry_lo1 : e.entry_lo0;
   if (!EntryLo::V::test(lo)) {
-    raise_tlb(vaddr, acc, false, false);
+    if (report) raise_tlb(vaddr, acc, false, false);
     return false;
   }
   if (acc == Access::Store && !EntryLo::D::test(lo)) {
-    raise_tlb(vaddr, acc, false, true);
+    if (report) raise_tlb(vaddr, acc, false, true);
     return false;
   }
   const u64 pfn_addr = EntryLo::PFN::get(lo) << 12;
@@ -418,9 +419,15 @@ void Vr4300::tlb_write(u32 i) {
 
 u32 Vr4300::random_reg() const noexcept {
   // Random counts down from 31 to Wired once per retired instruction, then reloads 31
-  // (5.4.2). Bit 5 participates when Wired > 31.
-  const u64 n = retired_ - random_base_;
-  const u32 w = wired_ & 63;
+  // (5.4.2). Bit 5 participates when Wired > 31. A Wired write resets it to 31 for the
+  // instruction two after the MTC0; the one right after still sees the old sequence
+  // (n64-systemtest RandomDecrement / RandomReadEarly; docs/hardware/cpu.md).
+  if (retired_ < random_base_) return random_value(retired_ - random_prev_base_, random_prev_wired_);
+  return random_value(retired_ - random_base_, wired_);
+}
+
+u32 Vr4300::random_value(u64 n, u32 wired) noexcept {
+  const u32 w = wired & 63;
   if (w <= 31) {
     const u64 period = 32 - w;
     return 31 - static_cast<u32>(n % period);
@@ -510,13 +517,13 @@ bool Vr4300::icache_fill(ILine& line, u32 paddr) {
   return true;
 }
 
-bool Vr4300::fetch(u64 vaddr, u32& instr) {
+bool Vr4300::fetch(u64 vaddr, u32& instr, bool report) {
   if (vaddr & 3) {
-    raise_address_error(vaddr, Access::Fetch);
+    if (report) raise_address_error(vaddr, Access::Fetch);
     return false;
   }
   Translation tr;
-  if (!translate(vaddr, Access::Fetch, tr)) return false;
+  if (!translate(vaddr, Access::Fetch, tr, report)) return false;
   if (reverse_endian()) {
     vaddr ^= 4;
     tr.paddr ^= 4;
@@ -712,8 +719,10 @@ void Vr4300::cop0_set(u32 reg, u64 v) {
     case Context: context_ = (context_ & Context::BadVPN2::mask) | (v & Context::PTEBase::mask); break;
     case PageMask: page_mask_ = w & PageMask::kWriteMask; break;
     case Wired:
+      random_prev_base_ = random_base_;
+      random_prev_wired_ = wired_;
       wired_ = w & 63;
-      random_base_ = retired_ + 1;  // Random reads 31 from the next instruction on
+      random_base_ = retired_ + kRandomResetDelay;
       break;
     case BadVAddr: break;  // read-only
     case Count:
@@ -755,7 +764,7 @@ void Vr4300::cop0_write64(u32 reg, u64 v) { cop0_set(reg, v); }
 // ---- save state ------------------------------------------------------------------------------
 
 void Vr4300::serialize(SaveState& s) {
-  s.section("vr4300", 1);
+  s.section("vr4300", 2);
   s.array(gpr_);
   s.value(hi_);
   s.value(lo_);
@@ -771,6 +780,8 @@ void Vr4300::serialize(SaveState& s) {
   s.value(page_mask_);
   s.value(wired_);
   s.value(random_base_);
+  s.value(random_prev_base_);
+  s.value(random_prev_wired_);
   s.value(badvaddr_);
   s.value(count_offset_);
   s.value(entry_hi_);

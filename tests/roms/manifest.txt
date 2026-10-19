@@ -5,7 +5,8 @@
 #
 # id  expect  kind  args...
 
-# n64-systemtest, Phase 0 scope (RSP and RDP tests removed: n64-systemtest/phase0-cpu-scope.patch).
+# n64-systemtest, Phase 0 scope (RSP and RDP tests removed: n64-systemtest/phase0-cpu-scope.patch),
+# built with the Timing, Cycle and CP0-hazards groups (tests/roms/README.md).
 n64-systemtest/cpu pass systemtest n64-systemtest/n64-systemtest-cpu.z64 60
 
 # krom CPUTest: framebuffer must equal the reference screenshot exactly.
