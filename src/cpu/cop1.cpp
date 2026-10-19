@@ -49,8 +49,11 @@ struct Fcsr {
 enum : u32 { kI = 1, kU = 2, kO = 4, kZ = 8, kV = 16, kE = 32 };
 
 // FCR31 write mask: FS, C, cause, enables, flags, RM. Source: n64-systemtest CFC1CTC1_31.
-constexpr u32 kFcsrWriteMask = 0x0183'FFFF;
-// FCR0 as read on hardware. Source: n64-systemtest CFC1CTC1_0 ("CFC1 0 returns 0xA00").
+constexpr u32 kFcsrWriteMask = Fcsr::FS::mask | Fcsr::C::mask | Fcsr::Cause::mask |
+                               Fcsr::Enables::mask | Fcsr::Flags::mask | Fcsr::RM::mask;
+static_assert(kFcsrWriteMask == 0x0183'FFFF);
+// FCR0 as read on hardware. Source: n64-systemtest CFC1CTC1_0 ("CFC1 0 returns 0xA00"). The
+// manual (7.2.5) and n64brew "VR4300" give implementation 0x0B: ledger "fcr0-value".
 constexpr u32 kFcr0Value = 0x0000'0A00;
 
 constexpr u32 kDefaultNaN32 = 0x7FBF'FFFF;
@@ -200,11 +203,11 @@ u64 Vr4300::fpr_get_d(u32 r) const noexcept {
 }
 void Vr4300::fpr_set_s(u32 r, u32 v) noexcept {
   if (Status::FR::test(status_)) {
-    fpr_[r] = (fpr_[r] & 0xFFFF'FFFF'0000'0000ull) | v;
+    fpr_[r] = make64(hi32(fpr_[r]), v);
   } else if (r & 1) {
-    fpr_[r & ~1u] = (fpr_[r & ~1u] & 0xFFFF'FFFFull) | (u64{v} << 32);
+    fpr_[r & ~1u] = make64(v, lo32(fpr_[r & ~1u]));
   } else {
-    fpr_[r] = (fpr_[r] & 0xFFFF'FFFF'0000'0000ull) | v;
+    fpr_[r] = make64(hi32(fpr_[r]), v);
   }
 }
 void Vr4300::fpr_set_d(u32 r, u64 v) noexcept {
@@ -228,7 +231,7 @@ void Vr4300::ctc1(u32 r, u32 v) {
   // Cause bits with matching enables (or E) fire immediately (n64-systemtest
   // FireExceptionViaCTC1 / FireUnimplementedExceptionViaCTC1).
   const u32 cause = Fcsr::Cause::get(fcr31_);
-  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_) & 0x1F)) raise(ExcCode::FPE, next_instr_cop());
+  if ((cause & kE) || (cause & Fcsr::Enables::get(fcr31_))) raise(ExcCode::FPE, next_instr_cop());
 }
 
 u32 Vr4300::next_instr_cop() {
@@ -315,8 +318,10 @@ void Vr4300::fpu_execute(u32 instr) {
       const bool likely = (rt(instr) & 2) != 0;
       const bool taken = c == want;
       if (taken) {
+        // Offset from the next fetch address (pc_), as for the integer branches: the outer
+        // target when BC1 is in a jump's delay slot (docs/hardware/cpu.md, Integer quirks).
         branch_pending_ = true;
-        npc_ = cur_pc_ + 4 + (simm(instr) << 2);
+        npc_ = pc_ + branch_offset(instr);
       } else if (likely) {
         pc_ = npc_;
         npc_ += 4;
@@ -552,9 +557,10 @@ void Vr4300::fpu_execute(u32 instr) {
         h = static_cast<typename F::host>(iv);
       } else {
         const u64 v = fpu_src(rs_);
-        // CVT from L requires the value to fit 53 (D) / 24 (S) bits plus sign in hardware?
-        // The VR4300 raises Unimplemented for L sources outside +-2^55 (Guess: ledger "cop1-cvt-from-l").
-        if (as_s64(v) >= (s64{1} << 55) || as_s64(v) < -(s64{1} << 55)) return unimplemented();
+        // The VR4300 raises Unimplemented for L sources outside +-2^55.
+        // Guess: ledger "cop1-cvt-from-l".
+        constexpr s64 kCvtFromLLimit = s64{1} << 55;
+        if (as_s64(v) >= kCvtFromLLimit || as_s64(v) < -kCvtFromLLimit) return unimplemented();
         s64 iv = as_s64(v);
         fp_barrier(iv);
         h = static_cast<typename F::host>(iv);

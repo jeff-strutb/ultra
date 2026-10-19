@@ -51,6 +51,42 @@ Where a test's reference output itself is wrong (a screenshot captured on a flas
 capture artefact), the ledger records the failure with the evidence that it is the reference
 and not the emulator, and the gate keeps it as an expected failure.
 
+## hwprobe: the gold-standard test ROM
+
+`tests/probes/hwprobe/` is the project's own console ROM and its highest authority. It is
+run once on a real N64 and records, in a single dump, everything the emulator has to match:
+
+- **Timing:** per-instruction retirement for 59 classes, pipeline interlocks and overlap,
+  exceptions and interrupt acceptance, cache and TLB refill, every RCP register's access
+  time, RDRAM access patterns and contention with the RSP and RDP running, PI, SI, AI and SP
+  DMA, RDP command costs, RSP microcode timing, and the uncached-read loops behind the open
+  `cpu-timing-residual`.
+- **Behaviour:** every CPU instruction encoding (reserved ones included), the FPU over edge
+  operands in every rounding mode, integer edge cases, unaligned and LL/SC access, every RSP
+  vector instruction with its accumulator and flags plus the full reciprocal tables, a matrix
+  of RDP renders dumped pixel by pixel, Joybus/PIF responses and the controller paks
+  (read-only), and the soft-reset path.
+- **Power-on state:** the CPU and RCP state at the first instruction of boot code
+  (`hwprobe-cold.z64`, our own IPL3, SC64 direct boot), and the TLB and CP0 state the program
+  starts with.
+
+It needs no controller, and RESET is the only control. It writes an unlimited full record to
+the flashcart's SD card (about 1.7 MB) and a compact copy to FlashRAM. The same ROM runs
+headless in Ultra (`ultra_harness hwprobe`, `hwprobe-full`), and `tools/hwprobe.py compare`
+diffs the console's record against the emulator's, series by series. The console's record is
+the oracle; the emulator's never is. Console records live in
+[tests/traces/hwprobe/](tests/traces/hwprobe/). A new hardware unknown gets a series in this
+ROM before a number in the code.
+
+```bash
+sc64deployer upload --direct --save-type flashram tests/probes/hwprobe/hwprobe-cold.z64
+build/release/tests/ultra_harness hwprobe-full tests/probes/hwprobe/hwprobe.z64 emu.bin
+python3 tools/hwprobe.py compare console-stage1.bin emu.bin
+```
+
+Specification, groups and record format: [docs/timing/hwprobe.md](docs/timing/hwprobe.md).
+Building it: [tests/probes/README.md](tests/probes/README.md).
+
 ## Current Status
 
 The block below is generated: regenerate it with `python3 tools/progress.py` (it runs the full
@@ -150,9 +186,11 @@ save-state round trips, determinism of two runs, PI DMA and VI field timing.
     src/common/      fixed-width types, register bit fields, a MIPS assembler for tests and boot
     src/app/         the `ultra` command-line runner
     tests/unit/      Catch2 tests
-    tests/harness/   the ROM gate runner (manifest, systemtest, screen, kromcount)
+    tests/harness/   the ROM gate runner (manifest, systemtest, screen, kromcount, hwprobe)
     tests/roms/      vendored test ROMs, licences, the manifest
-    tools/           tracediff, progress.py
+    tests/probes/    hwprobe, the gold-standard console ROM (source and built ROMs)
+    tests/traces/    console records from hwprobe: the hardware oracle
+    tools/           tracediff, progress.py, hwprobe.py (record decoder and comparer)
     docs/            spec, ADRs, hardware notes, timing ledger
     third_party/     reference mirrors (n64brew, VR4300 manual); not tracked
     build/           everything generated

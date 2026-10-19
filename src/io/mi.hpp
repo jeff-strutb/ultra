@@ -13,7 +13,23 @@ namespace ultra {
 class Ri;
 class SaveState;
 
-enum class MiIntr : u32 { SP = 1u << 0, SI = 1u << 1, AI = 1u << 2, VI = 1u << 3, PI = 1u << 4, DP = 1u << 5 };
+// MI_INTR / MI_MASK bit of each interrupt source (n64brew "MIPS Interface", MI_INTR).
+enum class MiIntr : u32 {
+  SP = 1u << 0,
+  SI = 1u << 1,
+  AI = 1u << 2,
+  VI = 1u << 3,
+  PI = 1u << 4,
+  DP = 1u << 5,
+};
+inline constexpr u32 kMiIntrSources = 6;
+
+// MI_MASK write layout: a (clear, set) bit pair per source, SP lowest (n64brew "MIPS
+// Interface", MI_MASK).
+struct MiMaskWrite {
+  static constexpr u32 clr(u32 i) noexcept { return 1u << (2 * i); }
+  static constexpr u32 set(u32 i) noexcept { return 1u << (2 * i + 1); }
+};
 
 // Source: n64brew "MIPS Interface", MI_MODE read and write layouts.
 struct MiModeRead {

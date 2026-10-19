@@ -18,7 +18,7 @@ than the manual. Values without a primary source are in `docs/timing/ledger.md`.
 |---|---|---|
 | MasterClock (SClock) | 62.5 MHz, from the RCP | [n64brew] "Clock Timing", "SysAD Interface" |
 | PClock | 93.75 MHz = 3/2 MasterClock (Config.EC = 111b, 1:1.5) | [UM] 5.4.6, [n64brew] "Clock Timing" |
-| Count register | increments every 2 PClocks | [UM] 6.3.4; [n64brew] "ROM Header" |
+| Count register | increments every 2 PClocks | [UM] 6.3.3; [n64brew] "ROM Header" |
 
 The model keeps CPU time in PClocks and converts exactly (3 PClocks = 2 ticks).
 
@@ -27,7 +27,7 @@ The model keeps CPU time in PClocks and converts exactly (3 PClocks = 2 ticks).
 | Register | Value | Source |
 |---|---|---|
 | PRId | 0x00000B22 | [n64brew] "VR4300", Revision Identifiers; [krom] COP0Register |
-| FCR0 | 0x00000A00 | [st] `cop1` CFC1CTC1_0 ("CFC1 0 returns 0xA00") |
+| FCR0 | 0x00000A00 | [st] `cop1` CFC1CTC1_0 ("CFC1 0 returns 0xA00"). The manual (7.2.5) and [n64brew] "VR4300" give 0x0B00; ledger `fcr0-value` |
 | Config after IPL1 | 0x7006E463 (`MTC0 0x0006E463` plus fixed bits) | [n64brew] "Initial Program Load" IPL1; [st] `startup` |
 | Status after IPL1 | 0x34000000 (CU1, CU0, FR) | [n64brew] "Initial Program Load" IPL1; [st] `startup` |
 
@@ -120,6 +120,9 @@ Stall amounts:
 - TLBWI/TLBWR store PageMask per bit pair (each pair takes its upper bit), EntryLo masked to
   PFN, C, D, V, G (0x03FFFFFF) ([st] `tlb` "PageMask after TLBWI/TLBR", "EntryLo0/1/Hi after
   TLBWI/TLBR"); G reads back in both EntryLo registers ([UM] 5.3.1).
+- The EntryLo0/1 registers themselves keep bits 29:0 (0x3FFFFFFF), including bits 29:26 that
+  [UM] Figure 5-10 shows as zero ([st] `tlb` "EntryLo0 (masking)", "EntryLo1 (masking)" and
+  the 64-bit variants; ledger `entrylo-write-mask`).
 - Random counts down from 31 to Wired once per retired instruction ([UM] 5.4.2). Writing Wired
   resets it to 31 as read by the second instruction after the MTC0; the first still reads the
   old sequence, wrapping at the old Wired ([st] `cop0` RandomDecrement, RandomMasking,
@@ -172,7 +175,7 @@ Stall amounts:
 | MULT multiplies 64-bit rs by rt sign-extended from bit 34; DIV divides the 32-bit dividend by a divisor sign-extended from bit 34; DIV by zero gives LO = (n < 0 ? 1 : −1), HI = n | [n64brew] "VR4300", Sign extension bugs |
 | LWR that does not include the word's most significant byte keeps the upper 32 bits of rt; only a full-word LWR sign-extends | [UM] LWR ("the remaining portion of the register is not affected"); [st] `tlb64` load matrix |
 | JAL/JALR/BxxAL link to the instruction after the delay slot, also when the jump itself is in a delay slot | [UM] chapter 16; [st] `jumps` |
-| A conditional branch adds its offset to the address of the instruction fetched after it, and BxxAL links to that address + 4. That is the branch address + 4, except for a branch in another jump's or branch's delay slot, where it is the outer target. J/JAL in that position: ledger `jump-region-in-delay-slot` | [st] `jumps/conditionals.rs` BEQWithinDelay, BEQWithinDelayOfJR, BGEZALWithinDelay, BGEZALWithinDelayOfBEQ |
+| A conditional branch adds its offset to the address of the instruction fetched after it, and BxxAL links to that address + 4. That is the branch address + 4, except for a branch in another jump's or branch's delay slot, where it is the outer target. J/JAL in that position: ledger `jump-region-in-delay-slot`; BC1 in that position: ledger `bc1-in-delay-slot` | [st] `jumps/conditionals.rs` BEQWithinDelay, BEQWithinDelayOfJR, BGEZALWithinDelay, BGEZALWithinDelayOfBEQ |
 | Status.RE in user mode reverses endianness: data addresses XOR (8 − size) for sub-doubleword accesses, instruction fetches XOR 4 | [UM] 6.3.5; [st] `endian_re` |
 | COP2 with CU2 = 1: MFC2/DMFC2/MTC2/DMTC2 and LWC2/LDC2/SWC2/SDC2 move through one 64-bit latch; CFC2/CTC2 do nothing; anything else is RI with Cause.CE = 2. COP3 is RI with CE = 0 | [st] `cop_unusable` (COP2MFCBehavior, COP2LWC2Behavior) |
 

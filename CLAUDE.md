@@ -20,6 +20,9 @@ Read docs/SPEC.md before any work. It is the contract; this file is the working 
   worker protocol, trace format or save-state format.
 - When a test ROM fails: find the first bus-trace divergence with tools/tracediff, fix the
   root cause, add a unit test that would have caught it. Never special-case a test.
+- hwprobe (tests/probes/hwprobe, docs/timing/hwprobe.md) is the gold-standard test ROM. A new
+  hardware unknown gets a series in it. Its console records under tests/traces/hwprobe/ are
+  oracles; the emulator's record never is. Keep both ROMs building and the hwprobe ctests green.
 - When a hardware fact is unknown: say so in the ledger with confidence Guess, implement the
   best-documented model behind the existing interface, and open an issue naming the probe
   that would measure it. Do not invent a number and move on.

@@ -1,4 +1,4 @@
-# hwprobe: the console measurement ROM
+# hwprobe: the gold-standard console ROM
 
 `tests/probes/hwprobe/` builds one libdragon ROM that measures, on a real N64, every ledger
 entry a CPU-side probe can settle, and writes the raw results to the cartridge's FlashRAM.
@@ -6,11 +6,13 @@ The flashcart stores FlashRAM as a 128 KiB `.sav` file, which `tools/hwprobe.py`
 same ROM runs headless in Ultra (`ultra_harness hwprobe`), which dumps the FlashRAM it
 emulated, and `tools/hwprobe.py compare` diffs the two records series by series.
 
-The oracle is the console's record. Ultra's record is never an oracle.
+The oracle is the console's record. Ultra's record is never an oracle. hwprobe is the
+project's gold standard: a new hardware unknown gets a series here, and console records are
+committed under `tests/traces/hwprobe/` (see the README there).
 
 ## Why FlashRAM
 
-- 128 KiB holds the raw per-iteration samples (stage 1 uses about 96 KiB of its 112 KiB) the `cpu-timing-residual` question needs; 32 KiB
+- 128 KiB holds the raw per-iteration samples (stage 1 uses about 100 KiB of its 112 KiB) the `cpu-timing-residual` question needs; 32 KiB
   SRAM does not.
 - Every flashcart emulates it, real carts use it, and its protocol is documented (n64brew
   "Flash"). 1 Mbit SRAM is also offered by flashcarts, but its address map is not documented.
@@ -22,7 +24,7 @@ The oracle is the console's record. Ultra's record is never an oracle.
 No controller is needed and nothing is chosen on screen. RESET is the only control.
 
 1. Copy `tests/probes/hwprobe/hwprobe.z64` to the flashcart and boot it. Stage 1 measures and
-   writes its record (under 15 s), then shows `STAGE 1 DONE. PRESS RESET.`
+   writes its record (about a minute, most of it writing the SD card), then shows `STAGE 1 DONE. PRESS RESET.`
 2. Press RESET. On a flashcart that resets into the game, stage 2 records the state after the
    soft reset, then shows `ALL DONE. PRESS RESET, THEN POWER OFF.` On one that resets into its
    menu, stage 2 does not run and the stage 1 record is complete on its own.
@@ -73,7 +75,7 @@ Every series also goes to a full record with no size limit (`sink.c`). On a flas
 an SD card (SC64, EverDrive-64 X7, 64drive), the files are `ultra_hwprobe/stage1.bin` and
 `stage2.bin`. In an emulator with an ISViewer port, the record streams as `HWPX` hex lines
 that `ultra_harness hwprobe-full` collects into the same file. The full record holds what
-FlashRAM cannot: the CPU functional sweeps and 4096 samples for every loop run (about 1.2 MB in
+FlashRAM cannot: the CPU functional sweeps and 4096 samples for every loop run, the RDP renders and the RSP sweeps (about 1.7 MB in
 all). Its header has the FlashRAM layout below, with magic `ULTRAHF1` or `ULTRAHF2`.
 `tools/hwprobe.py` reads either form.
 

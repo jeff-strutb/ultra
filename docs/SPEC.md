@@ -194,7 +194,7 @@ Two parts of the machine have no complete public timing description. The spec ha
 - `IRdpCost::cost(const Command&, const RdpState&) -> {ticks, traffic[]}`. The RDP timing half calls this and nothing else.
 - Both carry a `confidence()` enum (`Measured`, `Derived`, `Guess`) per parameter, surfaced in `ultra --timing-report`.
 
-**Probe ROMs (`tests/probes/`, built with libdragon, MIT).** Each probe runs a controlled workload, measures with `COUNT` and `DP_CLOCK`, and prints results over the ISViewer/UNFLoader debug channel and to the screen. The same ROM runs in the emulator; the harness diffs the numbers.
+**Probe ROMs (`tests/probes/`, built with libdragon, MIT).** Each probe runs a controlled workload, measures with `COUNT` and `DP_CLOCK`, and prints results over the ISViewer/UNFLoader debug channel and to the screen. The same ROM runs in the emulator; the harness diffs the numbers. All six probes, plus functional sweeps and the cold-boot capture, are combined in one ROM, `tests/probes/hwprobe` (docs/timing/hwprobe.md), the project's gold-standard test ROM.
 
 1. **CPU retirement:** straight-line instruction sequences per opcode class, cached and uncached, measuring `COUNT` deltas. Establishes the pipeline table. Mostly a cross-check of n64-systemtest, which already covers much of this.
 2. **Cache and TLB:** refill timing for I and D cache, write-back cost, TLB refill exception latency.

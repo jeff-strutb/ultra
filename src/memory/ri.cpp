@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "core/savestate.hpp"
+#include "memory/arbiter_params.h"
 
 namespace ultra {
 
@@ -12,8 +13,8 @@ namespace {
 constexpr u32 kTrackedLimit = 0x0080'0000;
 constexpr u32 kMemorySpaceEnd = 0x03F0'0000;
 constexpr u32 kBroadcastBit = 0x0008'0000;  // address bit 19 selects broadcast register writes
-constexpr u32 kRowBytes = 2048;
-constexpr u32 kBankBytes = 1u << 20;
+constexpr u32 kRowBytes = arbiter_params::kRowBytes;
+constexpr u32 kBankBytes = arbiter_params::kBankBytes;
 }  // namespace
 
 Ri::Ri(Rdram& rdram, IArbiter& arbiter, TraceSink& trace)
@@ -21,36 +22,39 @@ Ri::Ri(Rdram& rdram, IArbiter& arbiter, TraceSink& trace)
 
 u32 Ri::read_reg(u32 paddr) {
   // Registers mirror with mask 0x001FFFE0 (n64brew "Memory map").
-  switch (static_cast<RiRegister>(paddr & 0x1C)) {
+  switch (static_cast<RiRegister>(paddr & kRiRegOffsetMask)) {
     case RiRegister::Mode: return mode_;
     case RiRegister::Config: return config_;
     case RiRegister::CurrentLoad:
       // Write-only by design; reads return a collection of bits from other registers.
       // Source: n64brew "RDRAM Interface", RI_CURRENT_LOAD READ.
-      return RiError::MissingAck::get(error_) | (1u << 1) | (1u << 2) |
-             (RiMode::StopR::get(mode_) << 3) | ((RiSelect::TSel::get(select_) & 1) << 4);
+      return RiCurrentLoadRead::ErrorAck::place(RiError::MissingAck::get(error_)) |
+             RiCurrentLoadRead::One::mask |
+             RiCurrentLoadRead::StopR::place(RiMode::StopR::get(mode_)) |
+             RiCurrentLoadRead::TSel0::place(RiSelect::TSel::get(select_));
     case RiRegister::Select: return select_;
     case RiRegister::Refresh: return refresh_;
     case RiRegister::Latency: return latency_;
     case RiRegister::Error: return error_;
-    case RiRegister::BankStatus: return (bank_dirty_ << 8) | bank_valid_;
+    case RiRegister::BankStatus:
+      return RiBankStatus::Dirty::place(bank_dirty_) | RiBankStatus::Valid::place(bank_valid_);
   }
   return 0;
 }
 
 void Ri::write_reg(u32 paddr, u32 value) {
-  switch (static_cast<RiRegister>(paddr & 0x1C)) {
+  switch (static_cast<RiRegister>(paddr & kRiRegOffsetMask)) {
     case RiRegister::Mode: mode_ = value & RiMode::kMask; break;
     case RiRegister::Config: config_ = value & RiConfig::kMask; break;
     case RiRegister::CurrentLoad: break;  // loads the RAC current control register
     case RiRegister::Select: select_ = value & RiSelect::kMask; break;
     case RiRegister::Refresh: refresh_ = value & RiRefresh::kMask; break;
-    case RiRegister::Latency: latency_ = value & 0xF; break;
+    case RiRegister::Latency: latency_ = RiLatency::Latency::get(value); break;
     case RiRegister::Error: error_ = 0; break;
     case RiRegister::BankStatus:
       // Any write invalidates every bank and marks it dirty (n64brew, RI_BANK_STATUS).
       bank_valid_ = 0;
-      bank_dirty_ = 0xFF;
+      bank_dirty_ = RiBankStatus::Dirty::field_mask;
       break;
   }
 }
@@ -85,7 +89,7 @@ void Ri::trace(Master m, TraceKind k, u32 addr, const u8* data, u32 len, Tick t,
 }
 
 Tick Ri::read(Master m, u32 paddr, u8* out, u32 len, Tick t, u8* ebits_out, TraceKind kind) {
-  paddr &= 0x03FF'FFFF;
+  paddr &= kRiAddrMask;
   if (paddr >= kTrackedLimit && paddr < kMemorySpaceEnd) error_ |= RiError::OverRange::mask;
   track_bank(paddr, false);
   if (!rdram_.mem_read(paddr, out, len, ebits_out)) error_ |= RiError::MissingAck::mask;
@@ -96,7 +100,7 @@ Tick Ri::read(Master m, u32 paddr, u8* out, u32 len, Tick t, u8* ebits_out, Trac
 
 Tick Ri::write(Master m, u32 paddr, const u8* data, u32 len, Tick t, const u8* mask,
                const u8* ebits, TraceKind kind) {
-  paddr &= 0x03FF'FFFF;
+  paddr &= kRiAddrMask;
   if (paddr >= kTrackedLimit && paddr < kMemorySpaceEnd) error_ |= RiError::OverRange::mask;
   track_bank(paddr, true);
   if (!rdram_.mem_write(paddr, data, ebits, len, mask)) error_ |= RiError::MissingAck::mask;
@@ -106,23 +110,21 @@ Tick Ri::write(Master m, u32 paddr, const u8* data, u32 len, Tick t, const u8* m
 }
 
 Tick Ri::reg_read(u32 paddr, u8 out[8], Tick t) {
-  // Register space: Adr[28:20] = (address >> 10) & 0x1FF, register offset = address & 0x3FF.
-  // Source: n64brew "RDRAM Interface", Memory addressing table.
-  u32 id = (paddr >> 10) & 0x1FF;
-  u64 v = rdram_.reg_read(id, paddr & 0x3FF);
+  const u32 id = RdramRegAddr::Device::get(paddr);
+  const u64 v = rdram_.reg_read(id, RdramRegAddr::Reg::get(paddr));
   store_be64(out, v);
-  Tick done = arbiter_.request({Master::CpuData, paddr & 0x03FF'FFFF, 8, AccessKind::Read, t});
-  trace(Master::CpuData, TraceKind::Read, paddr & 0x03FF'FFFF, out, 8, t, done);
+  Tick done = arbiter_.request({Master::CpuData, paddr & kRiAddrMask, 8, AccessKind::Read, t});
+  trace(Master::CpuData, TraceKind::Read, paddr & kRiAddrMask, out, 8, t, done);
   return done;
 }
 
 Tick Ri::reg_write(u32 paddr, const u8* stream, u32 stream_len, Tick t) {
-  u32 id = (paddr >> 10) & 0x1FF;
-  bool broadcast = (paddr & kBroadcastBit) != 0;
-  rdram_.reg_write(id, paddr & 0x3FF, stream, stream_len, broadcast);
+  const u32 id = RdramRegAddr::Device::get(paddr);
+  const bool broadcast = (paddr & kBroadcastBit) != 0;
+  rdram_.reg_write(id, RdramRegAddr::Reg::get(paddr), stream, stream_len, broadcast);
   Tick done =
-      arbiter_.request({Master::CpuData, paddr & 0x03FF'FFFF, stream_len, AccessKind::Write, t});
-  trace(Master::CpuData, TraceKind::Write, paddr & 0x03FF'FFFF, stream, stream_len, t, done);
+      arbiter_.request({Master::CpuData, paddr & kRiAddrMask, stream_len, AccessKind::Write, t});
+  trace(Master::CpuData, TraceKind::Write, paddr & kRiAddrMask, stream, stream_len, t, done);
   return done;
 }
 

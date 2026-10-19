@@ -44,6 +44,8 @@ System::System(const SystemConfig& cfg, std::unique_ptr<Cartridge> cart)
       bus_(BusDevices{&sched_, &mi_, &ri_, &pi_, &si_, &sp_, &dp_, &vi_, &ai_, &trace_}),
       cpu_(bus_, sched_, pins_) {
   if (!cart_) throw std::invalid_argument("System requires a cartridge");
+  rom_hash_ = 14695981039346656037ull;  // FNV-1a 64
+  for (const u8 b : cart_->rom()) rom_hash_ = (rom_hash_ ^ b) * 1099511628211ull;
   tv_ = cfg.tv.value_or(tv_from_region(cart_->region_code()));
   const bool pal = tv_ == VideoStandard::Pal;
   if (cfg.cic) {
@@ -109,6 +111,18 @@ bool System::capture_presented(u32 out_w, u32 out_h, std::vector<u32>& rgb) {
 
 void System::serialize(SaveState& s) {
   s.header();
+  // The state is only meaningful for the machine that made it (ADR 0003): same ROM, CIC and TV
+  // standard (which sets the VI/AI clock ratios).
+  s.section("system", 1);
+  u64 rom_hash = rom_hash_;
+  CicType cic = cic_;
+  VideoStandard tv = tv_;
+  s.value(rom_hash);
+  s.enumeration(cic, CicType::Cic7106);
+  s.enumeration(tv, VideoStandard::Mpal);
+  if (rom_hash != rom_hash_) throw std::runtime_error("save state: made with a different cartridge ROM");
+  if (cic != cic_) throw std::runtime_error("save state: made with a different CIC");
+  if (tv != tv_) throw std::runtime_error("save state: made with a different TV standard");
   sched_.serialize(s);
   rdram_.serialize(s);
   arbiter_.serialize(s);
@@ -136,8 +150,17 @@ std::vector<u8> System::save_state() {
 }
 
 void System::load_state(const std::vector<u8>& data) {
-  SaveState s = SaveState::loader(data);
-  serialize(s);
+  // All or nothing: a load that fails partway (truncated, mismatched, invalid field) would
+  // leave earlier modules overwritten, so the machine is restored from a copy taken first.
+  const std::vector<u8> before = save_state();
+  try {
+    SaveState s = SaveState::loader(data);
+    serialize(s);
+  } catch (...) {
+    SaveState r = SaveState::loader(before);
+    serialize(r);
+    throw;
+  }
 }
 
 }  // namespace ultra

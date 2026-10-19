@@ -45,3 +45,8 @@ add_test(NAME hwprobe-cold-record
          COMMAND Python3::Interpreter -I ${CMAKE_SOURCE_DIR}/tools/hwprobe.py dump
                  ${CMAKE_CURRENT_BINARY_DIR}/hwprobe-cold.bin)
 set_tests_properties(hwprobe-cold-record PROPERTIES FIXTURES_REQUIRED hwprobe-cold-bin LABELS rom)
+
+# Every data member of a serialized module is visited by its serializer or marked not state
+# (ADR 0003).
+add_test(NAME serialize-coverage
+         COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/check_serialize.py)

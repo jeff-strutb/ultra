@@ -42,7 +42,7 @@ class Ai {
   Scheduler& sched_;
   Mi& mi_;
   Ri& ri_;
-  VideoClockRatio clk_;
+  VideoClockRatio clk_;  // not state: fixed by the TV standard (identity section)
 
   u32 dram_addr_ = 0;
   u32 control_ = 0;
@@ -56,7 +56,7 @@ class Ai {
   bool carry_ = false;  // delayed carry into the next buffer's address
   u64 vclk_remainder_ = 0;
   u64 samples_ = 0;
-  Event fetch_ev_;
+  Event fetch_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

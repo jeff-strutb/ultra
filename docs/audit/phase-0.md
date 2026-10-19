@@ -429,3 +429,96 @@ proven it.
   window of any period and a VI-clock synchronizer were each fitted to the seven loop classes
   and rejected (ledger `cpu-timing-residual`). Closing it needs probes 1 and 6 on hardware. The
   2 % tolerance stays, with the exact variants ledgered as expected failures.
+- **2026-10-19, F6.** Save-state loading is checked and atomic (ADR 0003, format version 2):
+  - a `system` identity section (ROM hash, CIC, TV standard) rejects a state made by a
+    different machine;
+  - `bool` and enum fields are range-checked instead of copied raw (PIF CIC, SI op, CPU
+    load-target and write-buffer master);
+  - `System::load_state` restores a copy taken first if anything throws (trailing data was
+    already rejected).
+
+  `tests/unit/test_machine.cpp` checks that a failed load leaves the machine byte-identical
+  and still running like an untouched one, for a bad header, truncation and trailing data. It
+  also checks rejection of another ROM, CIC and TV standard, and of out-of-range bool and
+  enum bytes. Each check fails when its guard is removed.
+- **2026-10-19, F7.** Every item now has a ledger row (49 parameters):
+  - `fcr0-value`: the unused `Vr4300::kFcr0` (0x0B00) is removed. 0xA00 stays, because
+    n64-systemtest fails with 0x0B00. The row records that the manual (7.2.5) and n64brew both
+    say 0x0B00.
+  - `entrylo-write-mask`: 0x3FFFFFFF is cited. n64-systemtest's four EntryLo masking tests
+    fail if bits 29:26 are cleared or bit 30 is kept. The row records the conflict with
+    Figure 5-10.
+  - `write-accept`: the 1-tick acceptance in PI, SI, MI and the bus is one named Guess,
+    `kWriteAcceptTicks`.
+  - `mi-reg-read`: the text now gives the 2.0-2.7 tick range and says 3 is a rounding choice.
+  - `cop0-cause-poweron`: now names the VIIntrDisabled reference showing Cause = 0.
+  - `arb-*`: seven rows cover the nine Derived arbiter constants, and the source comments name
+    them.
+- **2026-10-19, F10.** ADR 0003 now states what each check proves:
+  - `tools/check_serialize.py` (ctest `serialize-coverage`) is the guard against missing
+    visits. Every data member of a serialized class must be visited or marked
+    `// not state: <reason>`. The members so marked are CPU per-step scratch, host debug aids,
+    Events (saved by the Scheduler), wiring, construction inputs checked by the identity
+    section, the derived RDRAM map, and ISViewer's host-side output (the Low item: it is
+    host-side, so it stays unsaved).
+  - The round-trip test now uses the auditor's method on the tracked ROM. It has three save
+    points: the PIF boot, an in-flight PI DMA, and program code. It compares B's bus trace
+    with A's after the save, and the final states.
+
+  Mutations showed the split:
+  - Dropping PI `dma_.remaining` fails the round-trip test.
+  - Dropping CPU `prev_dc_stall_` passes the round-trip test, and also a 600-reload variant
+    (tried, not kept). Only the source check catches it.
+- **2026-10-19, F8.** Hardware constants are now named and cited, and register fields go
+  through `Bits` (each new mask is `static_assert`ed against the literal it replaced):
+  - **Bus:** the physical address map (`core/bus.cpp`).
+  - **CPU:** vectors, power-on values, segment bounds, TLB size, Wired width, Count rate, page
+    sizes, cache tags (`PTag`), Cause IP2-IP7, EntryHi VPN/R, EntryLo TLB mask, LLAddr,
+    xkphys fields, and the CACHE, branch and jump fields.
+  - **I/O register layouts and write masks:** VI, PI, AI, SP, MI, DP, RI, SI, RDRAM (its
+    byte-sliced Delay/Mode/MinInterval fields use `SlicedField`), PIF, and the cartridge loader.
+  - **Duplicated facts now have one source:**
+    - RDRAM row and bank sizes, used by RI, PI, SP DMA and RDRAM row wrap;
+    - RI read/write delay and data rate, shared by RDRAM and the arbiter;
+    - the IPL2 checksum K and the IPL3 size, shared by `cic.cpp` and `pif_boot_rom.cpp`.
+  - **Citations:**
+    - Count corrected to 6.3.3.
+    - The FPU comment now says the EX-to-EX bypass is missing and the DC-to-EX bypass costs
+      the cycle (7.5.6, Figure 7-9); "DC->EX bypass" had been right but terse.
+    - The `cic.cpp` magic citation was already fixed under F1.
+
+  Shifts left in place are positional loops (page-mask pairs, `SlicedField`, SP and MI bit
+  pairs), arithmetic (sign tests, LUI, byte lanes), and host code in `app/main.cpp`.
+
+  Verification:
+  - Bus traces from the pre-F8 build (80b8fbc) and this one are byte-identical for
+    n64-systemtest-full (3 s), n64-systemtest-cpu (2 s), krom DMAAlignment-PI-ROM-FROM,
+    ExceptionVIIntrDisabled and CPUADD.
+  - The ROM gate gives 117 entries, 0 not as expected.
+- **2026-10-19, F9.** 21 new Catch2 cases (55 ctest entries in total, up from 34). They cover:
+  - RDRAM (`test_memory.cpp`):
+    - the SIn chain and id addressing, including Adr[20];
+    - the reset-WriteDelay skew;
+    - register readbacks;
+    - 9th-bit defaults;
+    - row wrap;
+    - the drive-current threshold.
+  - RI: masks, CURRENT_LOAD, BANK_STATUS, OverRange/MissingAck, register-space addressing,
+    broadcast, and refresh gating.
+  - The v1 arbiter: row hit/miss, dirty rows, octbyte rounding, channel occupancy, untracked
+    banks, refresh.
+  - SI and PIF (`test_io.cpp`): DMA both ways, the busy error, direct writes, the boot
+    handshake and checksum, lockout, the 5 s timeout, Joybus "no device", and challenge
+    inversion.
+  - AI: the FIFO, status, the sample clock, the delayed carry (observed through a recording
+    arbiter), and pause.
+  - SP: rows, skip, bank wrap, the final LEN, double buffering, status pairs, semaphore,
+    SP_PC, mirrors.
+  - DP: START/END, status pairs, the 24-bit clock.
+  - The CPU caches (`test_cpu_memory.cpp`): write-back, Hit_Write_Back, dirty eviction, line
+    refill, Hit_Invalidate, Index_Load_Tag, I-cache invalidation.
+  - The write buffer: four buffered stores, then a stall; drained before a read.
+  - COP0 write masks and read-only registers.
+
+  `docs/hardware/rdp.md` now records the DP interface facts. Mutation check: 27 seeded
+  defects, one per behaviour above, and each fails at least one new test.

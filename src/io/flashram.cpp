@@ -101,8 +101,8 @@ void FlashRam::serialize(SaveState& s) {
   s.section("flashram", 1);
   s.bytes(array_.data(), array_.size());
   s.bytes(page_.data(), page_.size());
-  s.value(mode_);
-  s.value(erase_setup_);
+  s.enumeration(mode_, Mode::LoadPage);
+  s.enumeration(erase_setup_, EraseSetup::Sector);
   s.value(erase_page_);
   s.value(status_);
   s.value(cmd_hi_);

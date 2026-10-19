@@ -9,35 +9,36 @@ namespace ultra::arbiter_params {
 
 // RDRAM clock cycles per RCP tick: RCLK 250 MHz / MClock 62.5 MHz.
 // Derived: n64brew "Clock Timing", X2 table. Also n64brew "RDRAM", Reset Complications
-// ("TCycle 4, RCP Cycle 1").
+// ("TCycle 4, RCP Cycle 1"). Ledger "arb-tcycles-per-tick".
 inline constexpr u64 kTCyclesPerTick = 4;
 
 // Request packet occupies 3 TCycles (6 bytes on the 9-bit, double-data-rate bus).
 // Derived: n64brew "RDRAM", Delay register / Reset Complications ("Write request packet is
-// send starting from (TCycle 0, RCP Cycle 0), finishing after 3 TCycles").
+// send starting from (TCycle 0, RCP Cycle 0), finishing after 3 TCycles"). Ledger "arb-request".
 inline constexpr u64 kRequestTCycles = 3;
 
 // Data moves 2 bytes per TCycle (both clock edges): 8 bytes in 4 TCycles.
 // Derived: n64brew "RDRAM", Reset Complications ("64bits of Data is send starting from
-// (TCycle 4 ...) finishing at (TCycle7 ...)").
+// (TCycle 4 ...) finishing at (TCycle7 ...)"). Ledger "arb-data-rate".
 inline constexpr u64 kBytesPerTCycle = 2;
 
 // RI is hardwired to WriteDelay = 1 TCycle.
-// Derived: n64brew "RDRAM", Reset Complications.
+// Derived: n64brew "RDRAM", Reset Complications. Ledger "arb-write-delay".
 inline constexpr u64 kWriteDelayTCycles = 1;
 
 // ReadDelay programmed by IPL3 to 7 TCycles (Delay register 0x18082838 -> ReadDelay=111b).
-// Derived: n64brew "RDRAM", Delay register and Initialization Sequence step 5b.
+// Derived: n64brew "RDRAM", Delay register and Initialization Sequence step 5b. Ledger
+// "arb-read-delay".
 inline constexpr u64 kReadDelayTCycles = 7;
 
 // Maximum burst the RI issues as one RDRAM transaction (16 octbytes).
 // Derived: n64brew "RDRAM Interface", Count section ("RCP supports DMA bursts upto a maximum
-// of 128 bytes").
+// of 128 bytes"). Ledger "arb-max-burst".
 inline constexpr u32 kMaxBurstBytes = 128;
 
 // Rows are 2 KiB; one open row per 1 MiB bank, 8 banks tracked by RI.
 // Derived: n64brew "RDRAM Interface", Bank Status Tracking; DeviceType 0xB4190010
-// (ColumnBits=11) from the hardware dump on the same page.
+// (ColumnBits=11) from the hardware dump on the same page. Ledger "arb-row-bank".
 inline constexpr u32 kRowBytes = 2048;
 inline constexpr u32 kBankBytes = 1u << 20;
 inline constexpr u32 kTrackedBanks = 8;

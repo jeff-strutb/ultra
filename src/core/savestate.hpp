@@ -25,7 +25,7 @@ class SaveState {
   enum class Mode : u8 { Save, Load };
 
   static constexpr u32 kMagic = 0x554C5452;  // "ULTR"
-  static constexpr u32 kFormatVersion = 1;
+  static constexpr u32 kFormatVersion = 2;
 
   static SaveState saver() { return SaveState(Mode::Save); }
   static SaveState loader(std::span<const u8> data) {
@@ -56,14 +56,39 @@ class SaveState {
       throw std::runtime_error("save state: section mismatch at '" + std::string(name) + "'");
   }
 
+  // Plain values. bool and enums have invalid bit patterns, so they go through the checked
+  // overloads below instead of a raw copy.
   template <typename T>
-    requires(std::is_trivially_copyable_v<T> && !std::is_pointer_v<T>)
+    requires(std::is_trivially_copyable_v<T> && !std::is_pointer_v<T> && !std::is_enum_v<T> &&
+             !std::is_same_v<T, bool>)
   void value(T& v) {
     bytes(reinterpret_cast<u8*>(&v), sizeof(T));
   }
 
+  void value(bool& v) {
+    u8 b = v ? 1 : 0;
+    bytes(&b, 1);
+    if (loading()) {
+      if (b > 1) throw std::runtime_error("save state: invalid bool");
+      v = b != 0;
+    }
+  }
+
+  // An enum whose valid values are 0..last.
+  template <typename E>
+    requires std::is_enum_v<E>
+  void enumeration(E& v, E last) {
+    using U = std::underlying_type_t<E>;
+    U u = static_cast<U>(v);
+    bytes(reinterpret_cast<u8*>(&u), sizeof(U));
+    if (loading()) {
+      if (u > static_cast<U>(last)) throw std::runtime_error("save state: invalid enum value");
+      v = static_cast<E>(u);
+    }
+  }
+
   template <typename T, usize N>
-    requires std::is_trivially_copyable_v<T>
+    requires(std::is_trivially_copyable_v<T> && !std::is_enum_v<T> && !std::is_same_v<T, bool>)
   void array(std::array<T, N>& a) {
     bytes(reinterpret_cast<u8*>(a.data()), sizeof(T) * N);
   }

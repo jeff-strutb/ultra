@@ -5,6 +5,7 @@
 // functional specification of both algorithms); n64brew "PIF-NUS" (variant table), "CIC-NUS".
 
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -26,6 +27,12 @@ struct CicInfo {
 // Table of retail variants. Source: n64brew "PIF-NUS", IPL3 checksum algorithm table.
 std::span<const CicInfo> cic_table();
 const CicInfo& cic_info(CicType t);
+
+// IPL3 occupies cartridge ROM 0x40..0xFFF ([n64brew] "ROM Header"; cic-algorithms.md 1.1).
+inline constexpr std::size_t kIpl3RomOffset = 0x40;
+inline constexpr std::size_t kIpl3Bytes = 0xFC0;
+// The IPL2 checksum's multiplier K (docs/hardware/cic-algorithms.md 1.1).
+inline constexpr u32 kIpl2SeedMultiplier = 0x6C07'8965;
 
 // The IPL2 checksum over the 0xFC0 bytes of IPL3 (ROM offsets 0x40..0xFFF), as computed by
 // IPL2 on the CPU and compared by the PIF. Returns the 48-bit value.

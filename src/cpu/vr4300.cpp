@@ -10,26 +10,38 @@ namespace ultra {
 
 using namespace cop0;
 
+namespace {
+// Virtual address map (VR4300 manual 5.2; Tables 5-1 to 5-4, Figures 5-4 to 5-7).
+// 32-bit segments, as the low word of a sign-extended address.
+constexpr u32 kKseg0 = 0x8000'0000u;  // kernel, unmapped, cached per Config.K0
+constexpr u32 kKseg1 = 0xA000'0000u;  // kernel, unmapped, uncached
+constexpr u32 kKsseg = 0xC000'0000u;  // supervisor / kernel, mapped
+constexpr u32 kKseg3 = 0xE000'0000u;  // kernel, mapped
+// 64-bit segments.
+constexpr u64 kMappedSegBytes = u64{1} << 40;          // xuseg, xsseg and xkseg: 1 TiB each
+constexpr u64 kXsseg = 0x4000'0000'0000'0000ull;       // region 1
+constexpr u64 kXksegEnd = 0xC000'00FF'7FFF'FFFFull;    // last xkseg address (below ckseg)
+constexpr u64 kCkseg0 = 0xFFFF'FFFF'8000'0000ull;      // compatibility kseg0..kseg3
+enum : u32 { kRegionUser = 0, kRegionSupervisor = 1, kRegionXkphys = 2 };
+}  // namespace
+
 Vr4300::Vr4300(Bus& bus, Scheduler& sched, CpuPins& pins) : bus_(bus), sched_(sched), pins_(pins) {
   // Power-on value of Cause. BD, CE and ExcCode are read-only and undefined after reset
   // (VR4300 manual 6.3.6); 0xB000007C is what krom's COP0Cause expected output shows surviving
   // the boot code's `mtc0 zero, Cause`. Guess: ledger "cop0-cause-poweron".
-  cause_ = 0xB000'007C;
+  cause_ = kCausePowerOn;
   // LLAddr is undefined after reset (5.4.7); krom's LL_LLD_SC_SCD expected output shows
   // 0xFFFFFFFF before any LL. Guess: ledger "cop0-lladdr-poweron".
-  lladdr_ = 0xFFFF'FFFF;
+  lladdr_ = kLLAddrPowerOn;
   // Registers that are undefined at power on but observed on hardware right after the first
   // turn-on (n64-systemtest src/tests/startup/mod.rs): BadVAddr reads all ones, ExceptPC and
   // ErrorEPC "are usually 0xFFFFFFFF_FFFFFFFF". ErrorEPC takes the PC at cold reset (6.4.4), so
   // the pre-reset PC is all ones too. Context/XContext hold BadVAddr's VPN2 and region bits, as
   // krom's COP0Register expected output shows (0x007FFFF0 / ...FFFFFFF0).
   // Derived (hardware observations in n64-systemtest): ledger "cop0-undefined-poweron".
-  badvaddr_ = ~u64{0};
+  latch_bad_vaddr(~u64{0});
   epc_ = ~u64{0};
   pc_ = ~u64{0};
-  context_ = Context::BadVPN2::set(context_, (badvaddr_ >> 13) & 0x7FFFF);
-  xcontext_ = XContext::BadVPN2::set(xcontext_, (badvaddr_ >> 13) & 0x7FFFFFF);
-  xcontext_ = XContext::R::set(xcontext_, badvaddr_ >> 62);
   // TLB contents are undefined at power on (manual 6.4.4); ours start as all-zero entries
   // (Guess: ledger "tlb-poweron"). Their compare masks must be derived like any written entry,
   // so a never-written entry matches only VPN2 0 / ASID 0 instead of every address.
@@ -55,7 +67,7 @@ void Vr4300::cold_reset() {
   itlb_flush();
   prev_dc_stall_ = 0;
   prev_ended_in_stall_ = false;
-  set_pc(0xFFFF'FFFF'BFC0'0000ull);
+  set_pc(kResetVector);
   update_timer();
 }
 
@@ -65,7 +77,7 @@ void Vr4300::soft_reset() {
             Status::ERL::mask | Status::SR::mask;
   error_epc_ = in_delay_slot_ ? pc_ - 4 : pc_;
   frozen_ = false;
-  set_pc(0xFFFF'FFFF'BFC0'0000ull);
+  set_pc(kResetVector);
 }
 
 void Vr4300::nmi() {
@@ -74,7 +86,7 @@ void Vr4300::nmi() {
   status_ &= ~Status::TS::mask;
   error_epc_ = in_delay_slot_ ? pc_ - 4 : pc_;
   frozen_ = false;
-  set_pc(0xFFFF'FFFF'BFC0'0000ull);
+  set_pc(kResetVector);
 }
 
 // ---- mode helpers ----------------------------------------------------------------------------
@@ -133,8 +145,8 @@ void Vr4300::step() {
   }
 
   if (cycles_ >= timer_cycle_) {
-    cause_ |= 1u << 15;  // IP7: Count == Compare (6.3.4)
-    timer_cycle_ += CpuCycle{1} << 33;  // next match after a full 2^32 Count period
+    cause_ |= Cause::IP7::mask;  // Count == Compare (6.3.4)
+    timer_cycle_ += kCountPeriod * kCyclesPerCount;  // next match after a full Count period
   }
 
   cur_pc_ = pc_;
@@ -245,7 +257,7 @@ void Vr4300::mci(u64 extra) {
 }
 
 bool Vr4300::check_interrupts() {
-  cause_ = (cause_ & ~(0x1Fu << 10)) | (u32{pins_.int_lines} << 10);
+  cause_ = Cause::IPExt::set(cause_, pins_.int_lines);
   if (!Status::IE::test(status_) || Status::EXL::test(status_) || Status::ERL::test(status_))
     return false;
   if ((Cause::IP::get(cause_) & Status::IM::get(status_)) == 0) return false;
@@ -258,9 +270,10 @@ bool Vr4300::check_interrupts() {
 u64 Vr4300::exception_vector(bool tlb_refill, bool xtlb) const noexcept {
   // Tables 6-3/6-4: base 0x8000_0000 (BEV=0) or 0xBFC0_0200 (BEV=1); TLB refill offset
   // 0x000, XTLB refill 0x080, everything else 0x180. Refill offsets only apply with EXL=0.
-  u64 base = Status::BEV::test(status_) ? 0xFFFF'FFFF'BFC0'0200ull : 0xFFFF'FFFF'8000'0000ull;
-  if (tlb_refill && !Status::EXL::test(status_)) return base + (xtlb ? 0x080 : 0x000);
-  return base + 0x180;
+  const u64 base = Status::BEV::test(status_) ? kVectorBaseBev1 : kVectorBaseBev0;
+  if (tlb_refill && !Status::EXL::test(status_))
+    return base + (xtlb ? kVectorXtlbRefill : kVectorTlbRefill);
+  return base + kVectorOther;
 }
 
 Vr4300::Stage Vr4300::stage_of(ExcCode code) noexcept {
@@ -318,27 +331,28 @@ void Vr4300::raise_in(ExcCode code, u32 ce, Stage stage) {
   if (break_on_exception_) frozen_ = true;
 }
 
-void Vr4300::raise_address_error(u64 vaddr, Access acc) {
+void Vr4300::latch_bad_vaddr(u64 vaddr) noexcept {
   badvaddr_ = vaddr;
+  context_ = Context::BadVPN2::set(context_, VAddr::VPN2::get(vaddr));
+  xcontext_ = XContext::BadVPN2::set(xcontext_, VAddr::VPN2::get(vaddr));
+  xcontext_ = XContext::R::set(xcontext_, VAddr::Region::get(vaddr));
+}
+
+void Vr4300::raise_address_error(u64 vaddr, Access acc) {
   // n64-systemtest "LW with address not sign extended" expects Context/XContext BadVPN2 to
   // be written on address errors as well (docs/hardware/cpu.md).
-  context_ = Context::BadVPN2::set(context_, (vaddr >> 13) & 0x7FFFF);
-  xcontext_ = XContext::BadVPN2::set(xcontext_, (vaddr >> 13) & 0x7FFFFFF);
-  xcontext_ = XContext::R::set(xcontext_, vaddr >> 62);
+  latch_bad_vaddr(vaddr);
   // EntryHi.VPN2/R are latched from the faulting address as for TLB misses
   // (n64-systemtest tlb64 "LW TLB Miss or Address Exception").
-  entry_hi_ = (entry_hi_ & EntryHi::ASID::mask) | (vaddr & 0xC000'00FF'FFFF'E000ull);
+  entry_hi_ = (entry_hi_ & EntryHi::ASID::mask) | (vaddr & EntryHi::kVpnMask);
   raise_in(acc == Access::Store ? ExcCode::AdES : ExcCode::AdEL, 0,
            acc == Access::Fetch ? Stage::RF : Stage::DC);
 }
 
 void Vr4300::raise_tlb(u64 vaddr, Access acc, bool miss, bool modification) {
   exception_timing(acc == Access::Fetch ? Stage::RF : Stage::DC);
-  badvaddr_ = vaddr;
-  context_ = Context::BadVPN2::set(context_, (vaddr >> 13) & 0x7FFFF);
-  xcontext_ = XContext::BadVPN2::set(xcontext_, (vaddr >> 13) & 0x7FFFFFF);
-  xcontext_ = XContext::R::set(xcontext_, vaddr >> 62);
-  entry_hi_ = (entry_hi_ & EntryHi::ASID::mask) | (vaddr & 0xC000'00FF'FFFF'E000ull);
+  latch_bad_vaddr(vaddr);
+  entry_hi_ = (entry_hi_ & EntryHi::ASID::mask) | (vaddr & EntryHi::kVpnMask);
   ExcCode code = modification ? ExcCode::Mod
                  : acc == Access::Store ? ExcCode::TLBS
                                         : ExcCode::TLBL;
@@ -384,7 +398,7 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out, bool report) {
       return false;
     }
     const u32 a = lo32(vaddr);
-    if (a < 0x8000'0000u) {
+    if (a < kKseg0) {
       if (k && Status::ERL::test(status_)) {
         // ERL=1: kuseg is an unmapped, uncached 2 GiB window (5.2.4).
         out = {a, false};
@@ -393,56 +407,54 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out, bool report) {
       return tlb_translate(vaddr, acc, out, report);
     }
     if (k) {
-      if (a < 0xA000'0000u) {
-        out = {a - 0x8000'0000u, Config::K0::get(config_) != 2};
+      if (a < kKseg1) {
+        out = {a - kKseg0, Config::K0::get(config_) != kCacheAlgUncached};
         return true;
       }
-      if (a < 0xC000'0000u) {
-        out = {a - 0xA000'0000u, false};
+      if (a < kKsseg) {
+        out = {a - kKseg1, false};
         return true;
       }
       return tlb_translate(vaddr, acc, out, report);
     }
-    if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out, report);
+    if (s && a >= kKsseg && a < kKseg3) return tlb_translate(vaddr, acc, out, report);
     if (report) raise_address_error(vaddr, acc);
     return false;
   }
 
   // 64-bit addressing (Tables 5-4 and Figure 5-7).
-  constexpr u64 k1TiB = u64{1} << 40;
-  const u32 region = static_cast<u32>(vaddr >> 62);
-  if (region == 0) {
-    if (vaddr < k1TiB) {
-      if (k && Status::ERL::test(status_) && vaddr < 0x8000'0000ull) {
+  const u32 region = static_cast<u32>(VAddr::Region::get(vaddr));
+  if (region == kRegionUser) {
+    if (vaddr < kMappedSegBytes) {
+      if (k && Status::ERL::test(status_) && vaddr < kKseg0) {
         out = {lo32(vaddr), false};
         return true;
       }
       return tlb_translate(vaddr, acc, out, report);
     }
-  } else if (region == 1) {
-    if ((k || s) && vaddr - 0x4000'0000'0000'0000ull < k1TiB) return tlb_translate(vaddr, acc, out, report);
-  } else if (region == 2) {
-    if (k && ((vaddr >> 32) & 0x07FF'FFFF) == 0) {
-      const u32 cca = static_cast<u32>((vaddr >> 59) & 7);
-      out = {lo32(vaddr), cca != 2};
+  } else if (region == kRegionSupervisor) {
+    if ((k || s) && vaddr - kXsseg < kMappedSegBytes) return tlb_translate(vaddr, acc, out, report);
+  } else if (region == kRegionXkphys) {
+    if (k && VAddr::XkphysHole::get(vaddr) == 0) {
+      out = {lo32(vaddr), VAddr::XkphysCca::get(vaddr) != kCacheAlgUncached};
       return true;
     }
   } else {
-    if (vaddr >= 0xFFFF'FFFF'8000'0000ull) {
+    if (vaddr >= kCkseg0) {
       const u32 a = lo32(vaddr);
       if (k) {
-        if (a < 0xA000'0000u) {
-          out = {a - 0x8000'0000u, Config::K0::get(config_) != 2};
+        if (a < kKseg1) {
+          out = {a - kKseg0, Config::K0::get(config_) != kCacheAlgUncached};
           return true;
         }
-        if (a < 0xC000'0000u) {
-          out = {a - 0xA000'0000u, false};
+        if (a < kKsseg) {
+          out = {a - kKseg1, false};
           return true;
         }
         return tlb_translate(vaddr, acc, out, report);
       }
-      if (s && a >= 0xC000'0000u && a < 0xE000'0000u) return tlb_translate(vaddr, acc, out, report);
-    } else if (k && vaddr <= 0xC000'00FF'7FFF'FFFFull) {
+      if (s && a >= kKsseg && a < kKseg3) return tlb_translate(vaddr, acc, out, report);
+    } else if (k && vaddr <= kXksegEnd) {
       return tlb_translate(vaddr, acc, out, report);
     }
   }
@@ -453,15 +465,15 @@ bool Vr4300::translate(u64 vaddr, Access acc, Translation& out, bool report) {
 void Vr4300::tlb_refresh_entry(u32 i) {
   TlbEntry& e = tlb_[i];
   // Compare R (63:62) and VPN2 (39:13) above the page-size mask (5.4.9, Figure 5-19).
-  const u64 page_bits = u64{e.page_mask} | 0x1FFF;
-  e.vpn2_mask = 0xC000'00FF'FFFF'E000ull & ~page_bits;
+  const u64 page_bits = u64{e.page_mask} | kMinPagePairMask;
+  e.vpn2_mask = EntryHi::kVpnMask & ~page_bits;
   e.global = EntryLo::G::test(e.entry_lo0) && EntryLo::G::test(e.entry_lo1);
 }
 
 bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out, bool report) {
   const u64 asid = EntryHi::ASID::get(entry_hi_);
   int match = -1;
-  for (u32 i = 0; i < 32; ++i) {
+  for (u32 i = 0; i < kTlbEntries; ++i) {
     const TlbEntry& e = tlb_[i];
     if ((vaddr & e.vpn2_mask) != (e.entry_hi & e.vpn2_mask)) continue;
     if (!e.global && EntryHi::ASID::get(e.entry_hi) != asid) continue;
@@ -473,7 +485,8 @@ bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out, bool report)
     return false;
   }
   const TlbEntry& e = tlb_[static_cast<u32>(match)];
-  const u64 page_bytes = (u64{e.page_mask} >> 1 | 0xFFF) + 1;
+  // The page mask covers a page pair; one page is half of it.
+  const u64 page_bytes = (u64{e.page_mask} / 2 | kMinPageMask) + 1;
   const u64 lo = (vaddr & page_bytes) ? e.entry_lo1 : e.entry_lo0;
   if (!EntryLo::V::test(lo)) {
     if (report) raise_tlb(vaddr, acc, false, false);
@@ -483,9 +496,9 @@ bool Vr4300::tlb_translate(u64 vaddr, Access acc, Translation& out, bool report)
     if (report) raise_tlb(vaddr, acc, false, true);
     return false;
   }
-  const u64 pfn_addr = EntryLo::PFN::get(lo) << 12;
+  const u64 pfn_addr = EntryLo::PFN::get(lo) << EntryLo::kPfnShift;
   out.paddr = static_cast<u32>((pfn_addr & ~(page_bytes - 1)) | (vaddr & (page_bytes - 1)));
-  out.cached = EntryLo::C::get(lo) != 2;
+  out.cached = EntryLo::C::get(lo) != kCacheAlgUncached;
   if (acc == Access::Fetch) itlb_access(vaddr);
   return true;
 }
@@ -514,7 +527,7 @@ void Vr4300::set_entry_hi(u64 v) noexcept {
 void Vr4300::tlb_probe() {
   index_ = IndexReg::P::mask;
   const u64 asid = EntryHi::ASID::get(entry_hi_);
-  for (u32 i = 0; i < 32; ++i) {
+  for (u32 i = 0; i < kTlbEntries; ++i) {
     const TlbEntry& e = tlb_[i];
     if ((entry_hi_ & e.vpn2_mask) != (e.entry_hi & e.vpn2_mask)) continue;
     if (!e.global && EntryHi::ASID::get(e.entry_hi) != asid) continue;
@@ -524,7 +537,7 @@ void Vr4300::tlb_probe() {
 }
 
 void Vr4300::tlb_read() {
-  const TlbEntry& e = tlb_[index_ & 31];
+  const TlbEntry& e = tlb_[index_ % kTlbEntries];
   page_mask_ = e.page_mask;
   set_entry_hi(e.entry_hi & ~u64{e.page_mask});
   // The G bit of a TLB entry reads back in both EntryLo registers (5.3.1).
@@ -534,18 +547,22 @@ void Vr4300::tlb_read() {
 }
 
 void Vr4300::tlb_write(u32 i) {
-  TlbEntry& e = tlb_[i & 31];
+  i %= kTlbEntries;
+  TlbEntry& e = tlb_[i];
   // The TLB stores the page mask per bit pair (bits 14:13, 16:15, ... 24:23); each pair takes
   // the value of its upper bit. EntryLo keeps PFN(25:6), C, D, V, G only.
   // Source: n64-systemtest tlb "PageMask after TLBWI/TLBR", "EntryLo0/1/Hi after TLBWI/TLBR".
   u32 mask = 0;
-  for (u32 pair = 0; pair < 6; ++pair)
-    if (page_mask_ & (1u << (14 + 2 * pair))) mask |= 3u << (13 + 2 * pair);
+  constexpr u32 kPairs = PageMask::Mask::width / 2;
+  for (u32 pair = 0; pair < kPairs; ++pair) {
+    const u32 lower = 1u << (PageMask::Mask::lo + 2 * pair), upper = lower * 2;
+    if (page_mask_ & upper) mask |= lower | upper;
+  }
   e.page_mask = mask;
   e.entry_hi = entry_hi_ & ~u64{mask};
-  e.entry_lo0 = entry_lo0_ & 0x03FF'FFFFull;
-  e.entry_lo1 = entry_lo1_ & 0x03FF'FFFFull;
-  tlb_refresh_entry(i & 31);
+  e.entry_lo0 = entry_lo0_ & EntryLo::kTlbMask;
+  e.entry_lo1 = entry_lo1_ & EntryLo::kTlbMask;
+  tlb_refresh_entry(i);
   itlb_flush();
 }
 
@@ -559,13 +576,14 @@ u32 Vr4300::random_reg() const noexcept {
 }
 
 u32 Vr4300::random_value(u64 n, u32 wired) noexcept {
-  const u32 w = wired & 63;
-  if (w <= 31) {
-    const u64 period = 32 - w;
-    return 31 - static_cast<u32>(n % period);
+  const u32 w = wired & kWiredMask;
+  constexpr u32 kTop = kTlbEntries - 1;
+  if (w <= kTop) {
+    const u64 period = kTlbEntries - w;
+    return kTop - static_cast<u32>(n % period);
   }
-  const u64 period = 32 + (64 - w);
-  return static_cast<u32>((31 - static_cast<s64>(n % period)) & 63);
+  const u64 period = kTlbEntries + (kWiredMask + 1 - w);
+  return static_cast<u32>((kTop - static_cast<s64>(n % period)) & kWiredMask);
 }
 
 // ---- bus helpers -----------------------------------------------------------------------------
@@ -574,7 +592,7 @@ bool Vr4300::wb_issue_head() {
   PendingWrite& w = wb_[wb_head_];
   const Tick start = std::max(w.ready, sysad_free_);
   const Tick done = bus_.cpu_write(w.master, w.paddr, w.size, w.data.data(), start);
-  wb_head_ = (wb_head_ + 1) & 3;
+  wb_head_ = static_cast<u32>((wb_head_ + 1) % wb_.size());
   --wb_count_;
   if (done == kTickNever) {
     frozen_ = true;
@@ -604,11 +622,11 @@ bool Vr4300::bus_read(Master m, u32 paddr, u32 size, u8* out) {
 
 bool Vr4300::bus_write(Master m, u32 paddr, u32 size, const u8* data) {
   // A full buffer stalls the pipeline until the oldest entry has completed (4.9).
-  if (wb_count_ == 4) {
+  if (wb_count_ == wb_.size()) {
     if (!wb_issue_head()) return false;
     stall_until_tick(sysad_free_);
   }
-  PendingWrite& w = wb_[(wb_head_ + wb_count_) & 3];
+  PendingWrite& w = wb_[(wb_head_ + wb_count_) % wb_.size()];
   w.paddr = paddr;
   w.size = size;
   w.master = m;
@@ -621,7 +639,7 @@ bool Vr4300::bus_write(Master m, u32 paddr, u32 size, const u8* data) {
 // ---- caches ----------------------------------------------------------------------------------
 
 void Vr4300::dcache_writeback(DLine& line, u32 index) {
-  const u32 paddr = (line.ptag << 12) | ((index << 4) & 0xFFF);
+  const u32 paddr = PTag::place(line.ptag) | ((index * kDCacheLineBytes) & ~PTag::mask);
   bus_write(Master::CpuData, paddr, kDCacheLineBytes, line.data.data());
   line.dirty = false;
 }
@@ -633,7 +651,7 @@ bool Vr4300::dcache_fill(DLine& line, u32 paddr) {
   if (!bus_read(Master::CpuData, paddr & ~(kDCacheLineBytes - 1), kDCacheLineBytes, buf))
     return false;
   std::memcpy(line.data.data(), buf, kDCacheLineBytes);
-  line.ptag = paddr >> 12;
+  line.ptag = PTag::get(paddr);
   line.valid = true;
   line.dirty = false;
   return true;
@@ -644,7 +662,7 @@ bool Vr4300::icache_fill(ILine& line, u32 paddr) {
   if (!bus_read(Master::CpuInstr, paddr & ~(kICacheLineBytes - 1), kICacheLineBytes, buf))
     return false;
   std::memcpy(line.data.data(), buf, kICacheLineBytes);
-  line.ptag = paddr >> 12;
+  line.ptag = PTag::get(paddr);
   line.valid = true;
   return true;
 }
@@ -662,7 +680,7 @@ bool Vr4300::fetch(u64 vaddr, u32& instr, bool report) {
   }
   if (tr.cached) {
     ILine& line = iline(vaddr);
-    if (!line.valid || line.ptag != (tr.paddr >> 12)) {
+    if (!line.valid || line.ptag != PTag::get(tr.paddr)) {
       if (!icache_fill(line, tr.paddr)) return false;
     }
     instr = load_be32(line.data.data() + (vaddr & (kICacheLineBytes - 1)));
@@ -676,7 +694,7 @@ bool Vr4300::fetch(u64 vaddr, u32& instr, bool report) {
 
 bool Vr4300::check_watch(u32 paddr, Access acc) {
   // 6.4.17: WatchLo.PAddr0 matches physical address bits 31:3 for loads (R) / stores (W).
-  if (((paddr >> 3) & 0x1FFF'FFFF) != WatchLo::PAddr0::get(watch_lo_)) return true;
+  if ((paddr & WatchLo::PAddr0::mask) != (watch_lo_ & WatchLo::PAddr0::mask)) return true;
   bool hit = (acc == Access::Load && WatchLo::R::test(watch_lo_)) ||
              (acc == Access::Store && WatchLo::W::test(watch_lo_));
   if (!hit) return true;
@@ -705,7 +723,7 @@ bool Vr4300::load(u64 vaddr, T& out, bool partial) {
   u8 bytes[8];
   if (tr.cached) {
     DLine& line = dline(vaddr);
-    if (!line.valid || line.ptag != (tr.paddr >> 12)) {
+    if (!line.valid || line.ptag != PTag::get(tr.paddr)) {
       if (!dcache_fill(line, tr.paddr)) return false;
     }
     std::memcpy(bytes, line.data.data() + (vaddr & 15), size);
@@ -734,7 +752,7 @@ bool Vr4300::store_bus(u64 vaddr, u32 size, const u8* bus_word, u32 cache_offset
   if (prev_dcache_store_) cycles_ += timing::kStoreLoadDcbCycles;
   if (tr.cached) {
     DLine& line = dline(vaddr);
-    if (!line.valid || line.ptag != (tr.paddr >> 12)) {
+    if (!line.valid || line.ptag != PTag::get(tr.paddr)) {
       if (!dcache_fill(line, tr.paddr)) return false;
     }
     std::memcpy(line.data.data() + cache_offset, cache_bytes, cache_len);
@@ -798,15 +816,17 @@ template bool Vr4300::store<u64>(u64, u64);
 
 // ---- COP0 ------------------------------------------------------------------------------------
 
-u32 Vr4300::count_reg() const noexcept { return static_cast<u32>((cycles_ >> 1) + count_offset_); }
+u32 Vr4300::count_reg() const noexcept {
+  return static_cast<u32>(cycles_ / kCyclesPerCount + count_offset_);
+}
 
 void Vr4300::update_timer() noexcept {
   // Next PCycle (even, Count increments every other PCycle) at which Count == Compare.
-  const u64 k_now = cycles_ >> 1;
+  const u64 k_now = cycles_ / kCyclesPerCount;
   const u32 count_now = static_cast<u32>(k_now + count_offset_);
   u64 delta = static_cast<u32>(compare_ - count_now);
-  if (delta == 0) delta = u64{1} << 32;
-  timer_cycle_ = (k_now + delta) << 1;
+  if (delta == 0) delta = kCountPeriod;
+  timer_cycle_ = (k_now + delta) * kCyclesPerCount;
 }
 
 u64 Vr4300::cop0_get(u32 reg) {
@@ -853,18 +873,18 @@ void Vr4300::cop0_set(u32 reg, u64 v) {
     case Wired:
       random_prev_base_ = random_base_;
       random_prev_wired_ = wired_;
-      wired_ = w & 63;
+      wired_ = w & kWiredMask;
       random_base_ = retired_ + kRandomResetDelay;
       break;
     case BadVAddr: break;  // read-only
     case Count:
-      count_offset_ = static_cast<u32>(w - static_cast<u32>(cycles_ >> 1));
+      count_offset_ = static_cast<u32>(w - static_cast<u32>(cycles_ / kCyclesPerCount));
       update_timer();
       break;
     case EntryHi: set_entry_hi(v & EntryHi::kWriteMask); break;
     case Compare:
       compare_ = w;
-      cause_ &= ~(1u << 15);
+      cause_ &= ~Cause::IP7::mask;
       update_timer();
       break;
     case Status: status_ = (status_ & ~Status::kWriteMask) | (w & Status::kWriteMask); break;
@@ -876,12 +896,12 @@ void Vr4300::cop0_set(u32 reg, u64 v) {
       break;
     case LLAddr: lladdr_ = w; break;
     case WatchLo: watch_lo_ = w & WatchLo::kWriteMask; break;
-    case WatchHi: watch_hi_ = w & 0xF; break;
+    case cop0::WatchHi: watch_hi_ = cop0::WatchHi::PAddr1::get(w); break;
     case XContext:
       xcontext_ = (xcontext_ & (XContext::BadVPN2::mask | XContext::R::mask)) |
                   (v & XContext::PTEBase::mask);
       break;
-    case ParityError: parity_error_ = w & 0xFF; break;
+    case ParityError: parity_error_ = ParityErrorReg::Diagnostic::get(w); break;
     case CacheError: break;
     case TagLo: tag_lo_ = w & TagLo::kWriteMask; break;
     case TagHi: tag_hi_ = 0; break;  // RFU, reads zero (5.4.8)
@@ -936,7 +956,7 @@ void Vr4300::serialize(SaveState& s) {
   s.value(fcr31_);
   s.value(cop1_latch_);
   s.value(cop2_latch_);
-  for (u32 i = 0; i < 32; ++i) {
+  for (u32 i = 0; i < kTlbEntries; ++i) {
     TlbEntry& e = tlb_[i];
     s.value(e.entry_hi);
     s.value(e.entry_lo0);
@@ -958,7 +978,7 @@ void Vr4300::serialize(SaveState& s) {
   s.value(cycles_);
   s.value(retired_);
   s.value(frozen_);
-  s.value(pending_load_kind_);
+  s.enumeration(pending_load_kind_, LoadTarget::Fpr);
   s.value(pending_load_reg_);
   s.value(prev_dcache_store_);
   s.value(fpu_result_reg_);
@@ -968,7 +988,7 @@ void Vr4300::serialize(SaveState& s) {
   for (PendingWrite& w : wb_) {
     s.value(w.paddr);
     s.value(w.size);
-    s.value(w.master);
+    s.enumeration(w.master, Master::Pif);
     s.value(w.ready);
     s.array(w.data);
   }

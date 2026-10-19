@@ -19,6 +19,17 @@ constexpr u32 kCommandByte = 0x3F;
 constexpr u32 kChecksumOffset = 0x32;
 constexpr u32 kChallengeOffset = 0x30;
 
+// Joybus frame in PIF RAM (n64brew "PIF-NUS", Joybus frame): per channel either an escape
+// byte or a TX length byte, an RX length byte, TX bytes and RX bytes. RX bit 7 reports "no
+// device"; TX bit 7 marks a channel to skip.
+constexpr u32 kJoybusChannels = 5;
+constexpr u8 kJoybusSkipChannel = 0x00;
+constexpr u8 kJoybusResetChannel = 0xFD;
+constexpr u8 kJoybusEndFrame = 0xFE;
+constexpr u8 kJoybusNop = 0xFF;
+using JoybusLen = Bits<0, 6, u8>;
+using JoybusFlag = Bit<7, u8>;  // TX: skip; RX: no device
+
 // The PIF halts the console if boot is not terminated "before 5 seconds from boot".
 // Derived: n64brew "PIF-NUS", command 0x08. Exact firmware count is a Guess (ledger "pif-boot-timeout").
 constexpr Tick kBootTimeoutTicks = 5 * kRcpClockHz;
@@ -88,14 +99,14 @@ void Pif::on_nmi(Tick) {
 }
 
 u32 Pif::read_word(u32 addr) const noexcept {
-  addr &= 0x7FC;
+  addr &= kWordAddrMask;
   if (addr >= kRomBytes) return load_be32(ram_.data() + (addr - kRomBytes));
   // After lockout the ROM area reads as zero (n64brew "Serial Interface").
   return rom_locked_ ? 0 : load_be32(rom_.data() + addr);
 }
 
 void Pif::write_word(u32 addr, u32 value, Tick t) {
-  addr &= 0x7FC;
+  addr &= kWordAddrMask;
   if (addr < kRomBytes) return;  // writes to ROM are ignored by the PIF
   store_be32(ram_.data() + (addr - kRomBytes), value);
   if (addr - kRomBytes == (kCommandByte & ~3u)) process_command(t);
@@ -118,7 +129,7 @@ void Pif::process_command(Tick) {
       // Read and clear the 6-byte checksum written by IPL2, then acknowledge with 0x80.
       u64 c = 0;
       for (u32 i = 0; i < 6; ++i) {
-        c = (c << 8) | ram_[kChecksumOffset + i];
+        c = c * 256 + ram_[kChecksumOffset + i];  // big-endian bytes
         ram_[kChecksumOffset + i] = 0;
       }
       checksum_from_cpu_ = c;
@@ -142,14 +153,17 @@ void Pif::process_command(Tick) {
   }
   if (cmd & kCmdChallenge) {
     if (cic_ == CicType::Cic6105 || cic_ == CicType::Cic7105) {
+      // The challenge is 15 bytes = 30 nibbles, high nibble first.
+      using Hi = Bits<4, 4, u8>;
+      using Lo = Bits<0, 4, u8>;
       std::array<u8, 30> n;
       for (u32 i = 0; i < 15; ++i) {
-        n[2 * i] = ram_[kChallengeOffset + i] >> 4;
-        n[2 * i + 1] = ram_[kChallengeOffset + i] & 0xF;
+        n[2 * i] = Hi::get(ram_[kChallengeOffset + i]);
+        n[2 * i + 1] = Lo::get(ram_[kChallengeOffset + i]);
       }
       cic6105_challenge(n);
       for (u32 i = 0; i < 15; ++i)
-        ram_[kChallengeOffset + i] = static_cast<u8>((n[2 * i] << 4) | n[2 * i + 1]);
+        ram_[kChallengeOffset + i] = static_cast<u8>(Hi::place(n[2 * i]) | Lo::place(n[2 * i + 1]));
     } else {
       // Other CICs invert the challenge (n64brew "CIC-NUS", Command "Challenge").
       for (u32 i = 0; i < 15; ++i) ram_[kChallengeOffset + i] = static_cast<u8>(~ram_[kChallengeOffset + i]);
@@ -169,16 +183,16 @@ void Pif::run_joybus() {
   // Source: n64brew "PIF-NUS", Joybus frame.
   u32 p = 0;
   u32 channel = 0;
-  while (p < kRamBytes - 1 && channel < 5) {
+  while (p < kRamBytes - 1 && channel < kJoybusChannels) {
     const u8 tx = ram_[p];
-    if (tx == 0xFE) break;
-    if (tx == 0xFF) { ++p; continue; }
-    if (tx == 0x00 || tx == 0xFD) { ++p; ++channel; continue; }
+    if (tx == kJoybusEndFrame) break;
+    if (tx == kJoybusNop) { ++p; continue; }
+    if (tx == kJoybusSkipChannel || tx == kJoybusResetChannel) { ++p; ++channel; continue; }
     if (p + 1 >= kRamBytes) break;
-    const u32 txn = tx & 0x3F;
-    const u32 rxn = ram_[p + 1] & 0x3F;
+    const u32 txn = JoybusLen::get(tx);
+    const u32 rxn = JoybusLen::get(ram_[p + 1]);
     if (p + 2 + txn + rxn > kRamBytes) break;
-    if (!(tx & 0x80)) ram_[p + 1] = static_cast<u8>(rxn | 0x80);
+    if (!JoybusFlag::test(tx)) ram_[p + 1] = static_cast<u8>(rxn | JoybusFlag::mask);
     p += 2 + txn + rxn;
     ++channel;
   }
@@ -192,8 +206,8 @@ void Pif::serialize(SaveState& s) {
   s.section("pif", 3);
   s.array(ram_);
   s.array(rom_);
-  s.value(cic_);
-  s.value(tv_);
+  s.enumeration(cic_, CicType::Cic7106);
+  s.enumeration(tv_, VideoStandard::Mpal);
   s.value(rom_locked_);
   s.value(boot_terminated_);
   s.value(halt_cpu_);

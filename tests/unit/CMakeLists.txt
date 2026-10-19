@@ -1,10 +1,13 @@
 add_executable(ultra_unit_tests
   test_core.cpp
   test_cpu.cpp
+  test_cpu_memory.cpp
   test_cpu_pipeline.cpp
   test_flashram.cpp
   test_harness.cpp
+  test_io.cpp
   test_machine.cpp
+  test_memory.cpp
   test_pif_reset.cpp
   test_scheduler.cpp)
 # test_harness.cpp checks the ROM harness's helpers (tests/harness).

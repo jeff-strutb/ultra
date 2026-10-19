@@ -36,16 +36,77 @@ enum class ViRegister : u32 {
   StagedData = 0x3C,
 };
 
+// Register offset within the VI block: 16 registers, 4 bytes apart (mirrored above).
+inline constexpr u32 kViRegOffsetMask = 0x3C;
+
+// Register layouts and writable bits. Source: n64brew "Video Interface", the register table of
+// each register (bits marked Undefined are not writable).
 struct ViCtrl {
   using Type = Bits<0, 2>;
   using GammaDither = Bit<2>;
   using Gamma = Bit<3>;
   using Divot = Bit<4>;
+  using VbusClock = Bit<5>;
   using Serrate = Bit<6>;
+  using TestMode = Bit<7>;
   using AaMode = Bits<8, 2>;
+  using KillWe = Bit<11>;
   using PixelAdvance = Bits<12, 4>;
   using Dedither = Bit<16>;
+  static constexpr u32 kWriteMask = Type::mask | GammaDither::mask | Gamma::mask | Divot::mask |
+                                    VbusClock::mask | Serrate::mask | TestMode::mask |
+                                    AaMode::mask | KillWe::mask | PixelAdvance::mask |
+                                    Dedither::mask;
 };
+struct ViOrigin {
+  using Origin = Bits<0, 24>;
+};
+struct ViWidth {
+  using Width = Bits<0, 12>;
+};
+struct ViVIntr {  // also the layout of VI_V_CURRENT: a half-line number
+  using HalfLine = Bits<0, 10>;
+  using Line = Bits<1, 9>;
+  using Field = Bit<0>;
+};
+struct ViBurst {
+  using HsyncWidth = Bits<0, 8>;
+  using BurstWidth = Bits<8, 8>;
+  using VsyncHeight = Bits<16, 4>;
+  using BurstStart = Bits<20, 10>;
+  static constexpr u32 kWriteMask =
+      HsyncWidth::mask | BurstWidth::mask | VsyncHeight::mask | BurstStart::mask;
+};
+struct ViVTotal {
+  using Total = Bits<0, 10>;
+};
+struct ViHTotal {
+  using Total = Bits<0, 12>;
+  using Leap = Bits<16, 5>;
+  static constexpr u32 kWriteMask = Total::mask | Leap::mask;
+};
+struct ViHTotalLeap {
+  using LeapB = Bits<0, 12>;
+  using LeapA = Bits<16, 12>;
+  static constexpr u32 kWriteMask = LeapB::mask | LeapA::mask;
+};
+struct ViStartEnd {  // VI_H_VIDEO, VI_V_VIDEO, VI_V_BURST
+  using End = Bits<0, 10>;
+  using Start = Bits<16, 10>;
+  static constexpr u32 kWriteMask = End::mask | Start::mask;
+};
+struct ViScale {  // VI_X_SCALE, VI_Y_SCALE (Y keeps bits 27:26 too: "holds state")
+  using Scale = Bits<0, 12>;  // 2.10 fixed point
+  using Offset = Bits<16, 12>;
+  static constexpr u32 kWriteMask = Scale::mask | Offset::mask;
+  static constexpr u32 kOne = 1u << 10;  // 1.0 in 2.10
+};
+struct ViTestAddr {
+  using Addr = Bits<0, 7>;
+};
+static_assert(ViCtrl::kWriteMask == 0x1FBFF && ViBurst::kWriteMask == 0x3FFF'FFFF &&
+              ViHTotal::kWriteMask == 0x1F'0FFF && ViHTotalLeap::kWriteMask == 0x0FFF'0FFF &&
+              ViStartEnd::kWriteMask == 0x03FF'03FF && ViScale::kWriteMask == 0x0FFF'0FFF);
 
 enum class VideoStandard : u8 { Ntsc, Pal, Mpal };
 
@@ -86,7 +147,7 @@ class Vi {
   Scheduler& sched_;
   Mi& mi_;
   Ri& ri_;
-  VideoClockRatio clk_;
+  VideoClockRatio clk_;  // not state: fixed by the TV standard (identity section)
 
   u32 ctrl_ = 0;
   u32 origin_ = 0;
@@ -109,7 +170,7 @@ class Vi {
   u32 field_ = 0;
   u64 fields_ = 0;
   u64 vclk_remainder_ = 0;  // fractional VCLK->tick conversion carry (exact rational)
-  Event line_ev_;
+  Event line_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

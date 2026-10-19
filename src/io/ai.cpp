@@ -9,6 +9,39 @@ namespace ultra {
 namespace {
 enum class AiReg : u32 { DramAddr = 0x00, Length = 0x04, Control = 0x08, Status = 0x0C,
                          DacRate = 0x10, BitRate = 0x14 };
+// Register offset within the AI block: 6 registers, 4 bytes apart (mirrored above).
+constexpr u32 kAiRegOffsetMask = 0x1C;
+
+// Register layouts and writable bits. Source: n64brew "Audio Interface", register tables.
+// DRAM_ADDR and LENGTH are 24 and 18 bits; the DMA works in 8-byte units, so the low 3 bits are
+// dropped on write.
+struct AiDramAddr {
+  using Addr = Bits<3, 21>;
+  using Wrap = Bits<0, 24>;  // the address counter is 24 bits
+};
+struct AiLength {
+  using Len = Bits<3, 15>;
+};
+struct AiControl {
+  using DmaEnable = Bit<0>;
+};
+struct AiStatus {
+  using Full0 = Bit<0>;   // copy of FULL
+  using AlwaysOne = Bit<24>;
+  using Enabled = Bit<25>;
+  using Busy = Bit<30>;
+  using Full = Bit<31>;
+};
+struct AiDacRate {
+  using Rate = Bits<0, 14>;
+};
+struct AiBitRate {
+  using Rate = Bits<0, 4>;
+};
+static_assert(AiDramAddr::Addr::mask == 0x00FF'FFF8 && AiLength::Len::mask == 0x3FFF8);
+// Delayed-carry bug: a buffer that ends on an 8 KiB boundary moves the next buffer's address
+// up by 8 KiB (n64brew "Audio Interface", Delayed-carry hardware bug).
+constexpr u32 kCarryBlockBytes = 0x2000;
 // The DMA fetches one octbyte (two stereo 16-bit samples) at a time.
 // Guess (ledger "ai-fetch"): the fetch granularity is unmeasured; probe "ai-dma" (Phase 1).
 constexpr u32 kFetchBytes = 8;
@@ -32,14 +65,14 @@ Tick Ai::period_ticks(u32 samples) {
 }
 
 u32 Ai::read_reg(u32 paddr, Tick) {
-  const auto reg = static_cast<AiReg>(paddr & 0x1C);
+  const auto reg = static_cast<AiReg>(paddr & kAiRegOffsetMask);
   if (reg == AiReg::Status) {
     // Bits 31/0 FULL, 30 BUSY, 25 ENABLED, 24 reads 1 (n64brew AI_STATUS). COUNT, BC and
     // WC are not modelled yet (ledger "ai-status-count").
-    u32 s = 1u << 24;
-    if (full_) s |= (1u << 31) | 1u;
-    if (busy_) s |= 1u << 30;
-    if (control_ & 1) s |= 1u << 25;
+    u32 s = AiStatus::AlwaysOne::mask;
+    if (full_) s |= AiStatus::Full::mask | AiStatus::Full0::mask;
+    if (busy_) s |= AiStatus::Busy::mask;
+    if (AiControl::DmaEnable::test(control_)) s |= AiStatus::Enabled::mask;
     return s;
   }
   // AI_LENGTH returns the bytes remaining; the write-only registers mirror it.
@@ -47,10 +80,10 @@ u32 Ai::read_reg(u32 paddr, Tick) {
 }
 
 void Ai::write_reg(u32 paddr, u32 v, Tick t) {
-  switch (static_cast<AiReg>(paddr & 0x1C)) {
-    case AiReg::DramAddr: dram_addr_ = v & 0x00FF'FFF8; break;
+  switch (static_cast<AiReg>(paddr & kAiRegOffsetMask)) {
+    case AiReg::DramAddr: dram_addr_ = v & AiDramAddr::Addr::mask; break;
     case AiReg::Length: {
-      const u32 len = v & 0x3FFF8;
+      const u32 len = v & AiLength::Len::mask;
       if (len == 0) break;
       Buffer b{dram_addr_, len};
       if (!busy_) {
@@ -63,10 +96,10 @@ void Ai::write_reg(u32 paddr, u32 v, Tick t) {
       }
       break;
     }
-    case AiReg::Control: control_ = v & 1; break;
+    case AiReg::Control: control_ = v & AiControl::DmaEnable::mask; break;
     case AiReg::Status: mi_.lower(MiIntr::AI); break;
-    case AiReg::DacRate: dacrate_ = v & 0x3FFF; break;
-    case AiReg::BitRate: bitrate_ = v & 0xF; break;
+    case AiReg::DacRate: dacrate_ = AiDacRate::Rate::get(v); break;
+    case AiReg::BitRate: bitrate_ = AiBitRate::Rate::get(v); break;
   }
 }
 
@@ -78,9 +111,7 @@ void Ai::start_next(Tick t) {
   cur_ = next_;
   full_ = false;
   if (carry_) {
-    // Delayed carry: a buffer that ended on an 8 KiB boundary adds 0x2000 to the next
-    // buffer's address (n64brew "Audio Interface", Delayed-carry hardware bug).
-    cur_.addr = (cur_.addr + 0x2000) & 0x00FF'FFF8;
+    cur_.addr = (cur_.addr + kCarryBlockBytes) & AiDramAddr::Addr::mask;
     carry_ = false;
   }
   busy_ = true;
@@ -90,7 +121,7 @@ void Ai::start_next(Tick t) {
 }
 
 void Ai::on_fetch(Tick t) {
-  if (!(control_ & 1)) {
+  if (!AiControl::DmaEnable::test(control_)) {
     // DMA disabled: playback pauses until AI_CONTROL is set again.
     sched_.schedule(fetch_ev_, t + period_ticks(kFetchBytes / kBytesPerSample));
     return;
@@ -98,10 +129,10 @@ void Ai::on_fetch(Tick t) {
   u8 buf[kFetchBytes];
   ri_.read(Master::Ai, cur_.addr, buf, kFetchBytes, t);
   samples_ += kFetchBytes / kBytesPerSample;
-  cur_.addr = (cur_.addr + kFetchBytes) & 0x00FF'FFFF;
+  cur_.addr = AiDramAddr::Wrap::get(cur_.addr + kFetchBytes);
   cur_.len -= kFetchBytes;
   if (cur_.len == 0) {
-    if ((cur_.addr & 0x1FFF) == 0) carry_ = true;
+    if (cur_.addr % kCarryBlockBytes == 0) carry_ = true;
     start_next(t);
     return;
   }

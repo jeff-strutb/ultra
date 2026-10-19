@@ -91,8 +91,27 @@ class Vr4300 {
   // ---- constants -------------------------------------------------------------------------
   // PRId as read on revision 2.2 retail units (n64brew "VR4300", Revision Identifiers).
   static constexpr u32 kPRId = 0x0000'0B22;
-  // FCR0: implementation 0x0B, revision 0x00 (n64brew "VR4300", Revision Identifiers).
-  static constexpr u32 kFcr0 = 0x0000'0B00;
+  // Exception vectors (Tables 6-3 / 6-4): reset, soft reset and NMI at kResetVector; other
+  // exceptions at a base chosen by Status.BEV plus an offset.
+  static constexpr u64 kResetVector = 0xFFFF'FFFF'BFC0'0000ull;
+  static constexpr u64 kVectorBaseBev0 = 0xFFFF'FFFF'8000'0000ull;
+  static constexpr u64 kVectorBaseBev1 = 0xFFFF'FFFF'BFC0'0200ull;
+  static constexpr u64 kVectorTlbRefill = 0x000;
+  static constexpr u64 kVectorXtlbRefill = 0x080;
+  static constexpr u64 kVectorOther = 0x180;
+  // Power-on Cause and LLAddr: see the constructor. Guesses: ledger "cop0-cause-poweron",
+  // "cop0-lladdr-poweron".
+  static constexpr u32 kCausePowerOn = 0xB000'007C;
+  static constexpr u32 kLLAddrPowerOn = 0xFFFF'FFFF;
+  // TLB: 32 entries; Random counts within them, and Wired is 6 bits wide (5.4.2, 5.4.4).
+  static constexpr u32 kTlbEntries = 32;
+  static constexpr u32 kWiredMask = 63;
+  // Count increments every other PCycle (6.3.3) and wraps after 2^32 counts.
+  static constexpr u64 kCyclesPerCount = 2;
+  static constexpr u64 kCountPeriod = u64{1} << 32;
+  // Pages are at least 4 KiB, mapped in even/odd pairs (5.4.3, Table 5-7).
+  static constexpr u64 kMinPageMask = 0xFFF;
+  static constexpr u64 kMinPagePairMask = 0x1FFF;
 
  private:
   // ---- caches (VR4300 manual chapter 11) ---------------------------------------------------
@@ -102,6 +121,9 @@ class Vr4300 {
   static constexpr u32 kICacheLineBytes = 32;
   static constexpr u32 kDCacheLines = 512;
   static constexpr u32 kDCacheLineBytes = 16;
+
+  // Both caches tag a line with physical address bits 31:12 (11.2.1, 11.2.2).
+  using PTag = Bits<12, 20>;
 
   struct ILine {
     u32 ptag = 0;  // physical address bits 31:12
@@ -176,8 +198,12 @@ class Vr4300 {
   bool check_watch(u32 paddr, Access acc);
 
   // Cache helpers.
-  DLine& dline(u64 vaddr) noexcept { return dcache_[(vaddr >> 4) & (kDCacheLines - 1)]; }
-  ILine& iline(u64 vaddr) noexcept { return icache_[(vaddr >> 5) & (kICacheLines - 1)]; }
+  DLine& dline(u64 vaddr) noexcept {
+    return dcache_[(vaddr / kDCacheLineBytes) % kDCacheLines];
+  }
+  ILine& iline(u64 vaddr) noexcept {
+    return icache_[(vaddr / kICacheLineBytes) % kICacheLines];
+  }
   bool dcache_fill(DLine& line, u32 paddr);
   void dcache_writeback(DLine& line, u32 index);
   bool icache_fill(ILine& line, u32 paddr);
@@ -210,6 +236,9 @@ class Vr4300 {
   void raise_in(cop0::ExcCode code, u32 ce, Stage stage);
   // Cause.CE for an exception raised by CTC1: from the instruction behind it.
   u32 next_instr_cop();
+  // BadVAddr, Context.BadVPN2 and XContext.BadVPN2/R take a faulting address (6.3.1, 6.3.2,
+  // 6.3.9).
+  void latch_bad_vaddr(u64 vaddr) noexcept;
   void raise_address_error(u64 vaddr, Access acc);
   void raise_tlb(u64 vaddr, Access acc, bool miss, bool modification);
   u64 exception_vector(bool tlb_refill, bool xtlb) const noexcept;
@@ -270,9 +299,6 @@ class Vr4300 {
   u64 npc_ = 0;   // address of the instruction after it
   bool in_delay_slot_ = false;   // instruction at pc_ is in a branch delay slot
   bool branch_pending_ = false;  // set by a branch/jump executing now
-  u64 cur_pc_ = 0;               // address of the instruction executing now
-  bool cur_in_delay_ = false;
-  bool exception_ = false;       // the current instruction raised an exception
   bool llbit_ = false;
 
   // COP0
@@ -290,7 +316,7 @@ class Vr4300 {
   // Wired, then MFC0 Random: 1 instruction later reads the old sequence, 2 later reads 31).
   static constexpr u64 kRandomResetDelay = 2;
   u64 badvaddr_ = 0;
-  u64 count_offset_ = 0; // Count = (cycles_ >> 1) + count_offset_ (mod 2^32)
+  u64 count_offset_ = 0;  // Count = cycles_ / kCyclesPerCount + count_offset_ (mod 2^32)
   u64 entry_hi_ = 0;
   u32 compare_ = 0;
   u32 status_ = 0;
@@ -314,7 +340,7 @@ class Vr4300 {
   u32 cop1_latch_ = 0;
   u64 cop2_latch_ = 0;  // COP2 move latch (no COP2 exists on the VR4300)
 
-  std::array<TlbEntry, 32> tlb_{};
+  std::array<TlbEntry, kTlbEntries> tlb_{};
   std::array<ILine, kICacheLines> icache_{};
   std::array<DLine, kDCacheLines> dcache_{};
 
@@ -324,10 +350,7 @@ class Vr4300 {
   bool frozen_ = false;
   LoadTarget pending_load_kind_ = LoadTarget::None;  // load executed by the previous instr
   u32 pending_load_reg_ = 0;
-  LoadTarget cur_load_kind_ = LoadTarget::None;
-  u32 cur_load_reg_ = 0;
   bool prev_dcache_store_ = false;  // previous instruction stored into the D-cache
-  bool cur_dcache_store_ = false;
   // Pipeline stage bookkeeping (ADR 0005). The latch holds the instruction fetched in RF while
   // the previous one was in EX; `ok` false means that fetch faulted, and the instruction's own
   // step fetches again and raises the fault in program order.
@@ -338,15 +361,8 @@ class Vr4300 {
     bool ok = false;
   };
   FetchLatch fetch_latch_{};
-  u64 next_fetch_vaddr_ = 0;     // the instruction behind the executing one, in fetch order
-  bool rf_fetch_done_ = true;    // this step issued (or an EX exception cancelled) the RF fetch
-  bool dc_started_ = false;      // this step reached its DC stage
-  CpuCycle run_cycle_ = 0;       // end of the executing instruction's run (EX) cycle
-  CpuCycle dc_begin_ = 0;        // start of its DC stage
   CpuCycle prev_dc_stall_ = 0;   // DC stall cycles of the previous instruction
   bool prev_ended_in_stall_ = false;  // the PCycle before this step boundary was a stall
-  bool load_use_ = false;        // the executing instruction waits for the previous load (LDI)
-  bool kill_slot_ = false;       // the executing instruction kills its fetched delay slot
   // Instruction micro-TLB: 4 KiB virtual pages (vaddr >> 12), most recently used first.
   struct ItlbEntry {
     u64 vpage = 0;
@@ -354,7 +370,6 @@ class Vr4300 {
   };
   std::array<ItlbEntry, timing::kItlbEntries> itlb_{};
   s32 fpu_result_reg_ = -1;         // FPR written by the previous FPU computational op
-  s32 cur_fpu_result_reg_ = -1;
   // Write buffer (VR4300 manual 4.9): up to four pending SysAD writes. Each is presented to
   // the bus once the bus is free and the CPU has reached its issue time, so devices observe
   // the write at its true bus time.
@@ -370,6 +385,24 @@ class Vr4300 {
   u32 wb_head_ = 0;
   std::array<PendingWrite, 4> wb_{};
 
+  // not state: scratch of the executing instruction. step() sets each field before reading it,
+  // and save states are taken between steps.
+  u64 cur_pc_ = 0;               // address of the instruction executing now
+  bool cur_in_delay_ = false;
+  bool exception_ = false;       // the current instruction raised an exception
+  LoadTarget cur_load_kind_ = LoadTarget::None;
+  u32 cur_load_reg_ = 0;
+  bool cur_dcache_store_ = false;
+  s32 cur_fpu_result_reg_ = -1;
+  u64 next_fetch_vaddr_ = 0;     // the instruction behind the executing one, in fetch order
+  bool rf_fetch_done_ = true;    // this step issued (or an EX exception cancelled) the RF fetch
+  bool dc_started_ = false;      // this step reached its DC stage
+  CpuCycle run_cycle_ = 0;       // end of the executing instruction's run (EX) cycle
+  CpuCycle dc_begin_ = 0;        // start of its DC stage
+  bool load_use_ = false;        // the executing instruction waits for the previous load (LDI)
+  bool kill_slot_ = false;       // the executing instruction kills its fetched delay slot
+
+  // not state: host-side debugging aids.
   static constexpr u32 kHistory = 256;
   bool history_on_ = false;
   bool break_on_exception_ = false;

@@ -27,6 +27,8 @@ class Pif {
  public:
   static constexpr u32 kRomBytes = 0x7C0;
   static constexpr u32 kRamBytes = 0x40;
+  // The PIF answers word accesses in a 2 KiB window: ROM then RAM (n64brew "PIF-NUS").
+  static constexpr u32 kWordAddrMask = kRomBytes + kRamBytes - 4;
 
   Pif(Scheduler& sched, CpuPins& pins);
 
@@ -93,8 +95,8 @@ class Pif {
   u64 checksum_from_cpu_ = 0;
   u64 expected_checksum_ = 0;  // what the CIC reports: retail, or a flashcart's override
   bool reset_pending_ = false;  // pre-NMI raised, NMI not yet taken
-  Event timeout_ev_;
-  Event nmi_ev_;
+  Event timeout_ev_;  // not state: saved by the Scheduler
+  Event nmi_ev_;      // not state: saved by the Scheduler
 };
 
 }  // namespace ultra

@@ -31,7 +31,7 @@ namespace ultra {
 class SaveState;
 
 struct SystemConfig {
-  u32 rdram_bytes = 8u << 20;      // 4 MiB console, 8 MiB with Expansion Pak
+  u32 rdram_bytes = 8 * Rdram::kMiB;  // 4 MiB console, 8 MiB with Expansion Pak
   std::optional<VideoStandard> tv;  // default: from the ROM header's region code
   std::optional<CicType> cic;       // default: detected from IPL3 like the PIF does
   // Flashcart direct boot (SC64): the CIC emulation reports the checksum of the ROM's own
@@ -87,12 +87,13 @@ class System {
  private:
   void serialize(SaveState& s);
 
-  SystemConfig cfg_;
+  SystemConfig cfg_;  // not state: construction input; the identity section checks it
   std::unique_ptr<Cartridge> cart_;
   CicType cic_;
   VideoStandard tv_;
+  u64 rom_hash_;  // FNV-1a over the cartridge ROM: a save state names the ROM it was made from
 
-  TraceSink trace_;
+  TraceSink trace_;  // not state: host-side output
   Scheduler sched_;
   CpuPins pins_;
   Rdram rdram_;
@@ -106,7 +107,7 @@ class System {
   DpInterface dp_;
   Vi vi_;
   Ai ai_;
-  Bus bus_;
+  Bus bus_;  // not state: device pointers only
   Vr4300 cpu_;
 };
 

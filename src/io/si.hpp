@@ -47,7 +47,7 @@ class Si {
   Tick busy_until_ = 0;
   bool dma_error_ = false;
   std::array<u8, 64> buf_{};
-  Event finish_ev_;
+  Event finish_ev_;  // not state: saved by the Scheduler
 };
 
 }  // namespace ultra
