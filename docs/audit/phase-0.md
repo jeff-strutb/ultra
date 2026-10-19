@@ -360,3 +360,17 @@ proven it.
   "before pushing this directory anywhere".
 - Per the local `origin/main` ref, the directory has been pushed. The decision still appears
   to be open.
+
+## Remediation log
+
+- **2026-10-19, F1.** `src/io/cic.cpp` and the IPL2 checksum routine in `src/io/pif_boot_rom.cpp`
+  (which the remediation found also mirrored PifChecksum.c) were replaced through a two-party
+  clean room. One party wrote `docs/hardware/cic-algorithms.md` from the jago85 sources; the
+  implementer wrote both from that specification only. Git history was rewritten so that no
+  commit contains the earlier versions. Checks: the new `ipl2_checksum` and
+  `cic6105_challenge` match the old functions' outputs on 800 black-box vectors; both real
+  IPL3s give the n64brew value 0xA536C0F1D859; unit tests run the emulated IPL2 on random
+  IPL3s for each of the four seeds and compare what it hands the PIF with `ipl2_checksum`.
+- **2026-10-19, licensing note.** The krom ROM images and `N64_BOOTCODE.BIN` (Nintendo's 6102
+  IPL3) are no longer tracked, and history was rewritten to remove them from every commit.
+  `tests/roms/krom/ROMS.sha256` pins the images to obtain locally.

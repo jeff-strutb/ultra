@@ -43,6 +43,8 @@ class Pif {
   bool rom_locked() const noexcept { return rom_locked_; }
   bool boot_terminated() const noexcept { return boot_terminated_; }
   bool halted_cpu() const noexcept { return halt_cpu_; }
+  // The IPL2 checksum the CPU last handed over with command 0x20 (test observation).
+  u64 checksum_from_cpu() const noexcept { return checksum_from_cpu_; }
   CicType cic() const noexcept { return cic_; }
 
   void serialize(SaveState& s);

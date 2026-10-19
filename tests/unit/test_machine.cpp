@@ -2,6 +2,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <random>
+
 #include "io/cic.hpp"
 #include "machine.hpp"
 
@@ -104,4 +107,60 @@ TEST_CASE("cic: IPL2 checksum and detection of the 6102 IPL3s") {
     CHECK(detect_cic(rom, true) == CicType::Cic7101);
   }
   CHECK(cic_info(CicType::Cic6102).ipl2_checksum == 0xA536'C0F1'D859ull);
+}
+
+TEST_CASE("cic: derived IPL2 checksums of the 6102 IPL3 for the other seeds") {
+  // Regression values from docs/hardware/cic-algorithms.md 1.6 (derived, not hardware).
+  std::string err;
+  auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
+  REQUIRE(cart);
+  const auto ipl3 = cart->rom().subspan(0x40, 0xFC0);
+  CHECK(ipl2_checksum(ipl3, 0x78) == 0xD154'D024'B1BFull);
+  CHECK(ipl2_checksum(ipl3, 0x91) == 0xF1FA'53D0'DD55ull);
+  CHECK(ipl2_checksum(ipl3, 0x85) == 0x5D6B'534D'2A7Full);
+}
+
+TEST_CASE("cic: the boot ROM's IPL2 hands the PIF the checksum ipl2_checksum computes") {
+  // Random IPL3s booted under each seed: the PIF halts the CPU (no retail CIC accepts them),
+  // but only after the clean-room IPL2 has computed and handed over its checksum.
+  std::mt19937 rng(0x1F2u);
+  for (const CicType type : {CicType::Cic6102, CicType::Cic6103, CicType::Cic6105,
+                             CicType::Cic6106}) {
+    std::vector<u8> rom(0x10'1000, 0);
+    const u8 header[] = {0x80, 0x37, 0x12, 0x40};
+    std::copy(std::begin(header), std::end(header), rom.begin());
+    rom[0x3E] = 'E';
+    for (usize i = 0x40; i < 0x1000; ++i) rom[i] = static_cast<u8>(rng());
+    const u64 expected = ipl2_checksum(std::span<const u8>(rom).subspan(0x40, 0xFC0),
+                                       cic_info(type).seed);
+    SystemConfig cfg;
+    cfg.cic = type;
+    System sys(cfg, Cartridge::from_bytes(rom));
+    sys.power_on();
+    const Tick step = kRcpClockHz / 20;
+    for (int i = 0; i < 40 && sys.pif().checksum_from_cpu() == 0; ++i) {
+      sys.run_until(sys.now() + step);
+    }
+    INFO(cic_info(type).name);
+    CHECK(sys.pif().checksum_from_cpu() == expected);
+    CHECK(sys.pif().halted_cpu());
+  }
+}
+
+TEST_CASE("cic: 6105 challenge vectors") {
+  // docs/hardware/cic-algorithms.md 2.4 (derived, not hardware).
+  const auto run = [](const char* hex) {
+    std::array<u8, 30> n{};
+    for (usize i = 0; i < n.size(); ++i) {
+      const char c = hex[i];
+      n[i] = static_cast<u8>(c <= '9' ? c - '0' : c - 'A' + 10);
+    }
+    cic6105_challenge(n);
+    std::string out;
+    for (const u8 v : n) out.push_back("0123456789ABCDEF"[v]);
+    return out;
+  };
+  CHECK(run("000000000000000000000000000000") == "BF9F9F9F9F9F9F9F9F9F9F9F9F9F9F");
+  CHECK(run("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF") == "6949A3250F49A3250F49A3250F49A3");
+  CHECK(run("0123456789ABCDEF0123456789ABCD") == "B48B98AB7E8338255A29DC41F60B18");
 }
