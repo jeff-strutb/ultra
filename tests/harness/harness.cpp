@@ -16,6 +16,9 @@
 //   ultra_harness hwprobe ROM SAV [--seconds S] [--log FILE]
 //       Runs tests/probes/hwprobe headless until its stage 1 record is written, then writes the
 //       emulated FlashRAM (128 KiB, as a flashcart's .sav) to SAV. docs/timing/hwprobe.md.
+//   ultra_harness hwprobe-full ROM OUT [--seconds S]
+//       Runs hwprobe stage 1 headless and writes its full record (the file a flashcart's SD
+//       card receives) to OUT.
 //   ultra_harness manifest FILE [--rom-dir DIR] [--allow-missing]
 //       Runs every entry of a manifest and checks the outcome against its expectation
 //       (pass / fail). An unexpected pass fails just like an unexpected failure, so the
@@ -134,6 +137,47 @@ Outcome run_screen(const std::string& rom, const std::string& png, double second
   std::snprintf(buf, sizeof buf, "%zu pixels differ; first at (%zu,%zu): got %06x want %06x", diff,
                 first % w, first / w, rgb[first], ref.rgb[first]);
   return {false, buf};
+}
+
+// Collects hwprobe's full record (docs/timing/hwprobe.md, "Full record"): the ROM streams it
+// over the ISViewer port as "HWPX D <hex>" lines, then "HWPX H <hex>" for the header and
+// "HWPX END <stage>". Output is drained as it arrives, so the record has no size limit.
+Outcome run_hwprobe_full(const std::string& rom, const std::string& out_path, double seconds) {
+  std::string err;
+  auto sys = boot(rom, err);
+  if (!sys) return {false, err};
+  const Tick limit = static_cast<Tick>(seconds * static_cast<double>(kRcpClockHz));
+  const Tick step = kRcpClockHz / 100;
+  std::vector<u8> body, header;
+  std::string pending;
+  bool done = false;
+  auto hex_line = [](const std::string& line, std::vector<u8>& dst) {
+    for (usize i = 0; i + 1 < line.size(); i += 2)
+      dst.push_back(static_cast<u8>(std::stoul(line.substr(i, 2), nullptr, 16)));
+  };
+  while (!done && sys->now() < limit && !sys->cpu().frozen()) {
+    sys->run_until(std::min(limit, sys->now() + step));
+    pending += sys->cart().isviewer_output();
+    sys->cart().clear_isviewer_output();
+    usize nl;
+    while ((nl = pending.find('\n')) != std::string::npos) {
+      const std::string line = pending.substr(0, nl);
+      pending.erase(0, nl + 1);
+      if (line.rfind("HWPX D ", 0) == 0) hex_line(line.substr(7), body);
+      else if (line.rfind("HWPX H ", 0) == 0) hex_line(line.substr(7), header);
+      else if (line.rfind("HWPX END 1", 0) == 0) done = true;
+    }
+  }
+  if (sys->cart().isviewer_dropped() != 0) return {false, "ISViewer output was dropped"};
+  if (!done) return {false, "full record not finished"};
+  if (header.size() != 64) return {false, "full record header missing"};
+  std::ofstream f(out_path, std::ios::binary);
+  f.write(reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+  f.write(reinterpret_cast<const char*>(body.data()), static_cast<std::streamsize>(body.size()));
+  char buf[96];
+  std::snprintf(buf, sizeof buf, "%zu bytes, %.2f s emulated", header.size() + body.size(),
+                static_cast<double>(sys->now()) / kRcpClockHz);
+  return {true, buf};
 }
 
 Outcome run_kromcount(const std::string& rom, const std::string& font_path,
@@ -317,6 +361,11 @@ double opt_seconds(int argc, char** argv, double def) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc >= 4 && std::string(argv[1]) == "hwprobe-full") {
+    Outcome o = run_hwprobe_full(argv[2], argv[3], opt_seconds(argc, argv, 60));
+    std::printf("%s: %s\n", o.pass ? "PASS" : "FAIL", o.detail.c_str());
+    return o.pass ? 0 : 1;
+  }
   if (argc >= 3 && std::string(argv[1]) == "systemtest") {
     std::string log;
     for (int i = 3; i + 1 < argc; ++i)

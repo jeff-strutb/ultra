@@ -65,6 +65,7 @@ uint32_t rec_crc(void) { return crc; }
 uint32_t rec_series_count(void) { return nseries; }
 uint32_t rec_room(void) { return size - pos; }
 const uint8_t* rec_image(void) { return img; }
+uint64_t rec_silicon(void) { return silicon; }
 
 static void append(const void* data, uint32_t len) {
   memcpy(img + pos, data, len);
@@ -100,6 +101,7 @@ static void pad4(void) {
 
 void rec_series(uint16_t id, uint8_t esize, uint32_t count, const void* data) {
   const uint32_t len = esize * count;
+  sink_series(id, esize, HWP_PACK_NONE, count, data, len);
   if (!reserve(len)) return;
   series_header(id, esize, HWP_PACK_NONE, count, data, len);
   append(data, len);
@@ -143,6 +145,7 @@ void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t*
   pack_buf[3] = nesc;
   memcpy(out + nib_bytes, esc_buf, nesc);
   const uint32_t len = 4 + nib_bytes + nesc;
+  sink_series(id, 1, mode, count, pack_buf, len);
   if (!reserve(len)) return;
   series_header(id, 1, mode, count, pack_buf, len);
   append(pack_buf, len);
@@ -152,6 +155,11 @@ void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t*
 
 // Pages are programmed whatever silicon ID the cart reported: an emulated chip may report its
 // own. Success is decided by reading the record back (rec_finish).
+// Large series go to the full record only (sink.c), never to FlashRAM.
+void rec_series_full(uint16_t id, uint8_t esize, uint32_t count, const void* data) {
+  sink_series(id, esize, HWP_PACK_NONE, count, data, esize * count);
+}
+
 void rec_flush(void) {
   while ((next_page + 1) * PAGE <= pos) {
     if (!flash_program_page(base / PAGE + next_page, img + next_page * PAGE))

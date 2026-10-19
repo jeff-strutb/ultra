@@ -128,9 +128,17 @@ def parse_area(img, base, size, magic):
 
 
 def parse(path):
-    img = normalise(Path(path).read_bytes())
+    """A FlashRAM image (128 KiB, both stages) or a full-record file (one stage, ULTRAHF*)."""
+    raw = Path(path).read_bytes()
+    if raw[:7] == b"ULTRAHF":
+        stage = raw[7] - ord("0")
+        info = parse_area(raw, 0, len(raw), raw[:8])
+        info["full"] = True
+        empty = {"magic": b"", "complete": False, "series": []}
+        return [info, empty] if stage == 1 else [empty, info]
+    img = normalise(raw)
     if len(img) < 0x20000:
-        raise SystemExit(f"{path}: {len(img)} bytes, expected 131072 (FlashRAM)")
+        raise SystemExit(f"{path}: {len(img)} bytes, expected 131072 (FlashRAM) or a full record")
     return [parse_area(img, b, s, m) for b, s, m in STAGES]
 
 

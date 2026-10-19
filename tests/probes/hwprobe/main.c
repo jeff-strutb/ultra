@@ -6,6 +6,7 @@
 #include "hwp.h"
 
 int hwp_stage;
+static bool hwp_isviewer, hwp_sd;
 uint32_t hwp_memsize;
 
 extern int __boot_memsize, __boot_resettype;
@@ -78,6 +79,7 @@ static void finish(int row) {
   rec_series(S_FLASH_TIMES, 4, nt, t);
   if (nfaults) rec_series(S_FAULT, 4, 5 * nfaults, fault_log);
   const bool ok = rec_finish(0);
+  const bool full_ok = sink_close(0, rec_silicon());
   hwp_print(row, "record %lu B, %lu series, crc %08lx", (unsigned long)rec_bytes(),
             (unsigned long)rec_series_count(), (unsigned long)rec_crc());
   if (ok)
@@ -86,6 +88,9 @@ static void finish(int row) {
               (unsigned long)flash_last_status());
   else
     hwp_print(row + 1, "FLASHRAM WRITE FAILED (status %02lx)", (unsigned long)flash_last_status());
+  if (hwp_sd)
+    hwp_print(row + 2, full_ok ? "full record on SD: %lu B" : "SD WRITE FAILED (%lu B)",
+              (unsigned long)sink_bytes());
   // The record, for emulator runs and USB-attached carts.
   debugf("HWP RECORD STAGE %d BYTES %lu CRC %08lx\n", hwp_stage, (unsigned long)rec_bytes(),
          (unsigned long)rec_crc());
@@ -124,7 +129,8 @@ int main(void) {
   // No interrupts during the run, except where a probe enables one.
   C0_WRITE_STATUS(C0_STATUS() & ~(C0_STATUS_IE | 0xFF00));
   hwp_memsize = (uint32_t)__boot_memsize;
-  debug_init_isviewer();
+  hwp_isviewer = debug_init_isviewer();
+  hwp_sd = debug_init_sdfs("sd:/", -1);
   hwp_screen_init();
   hwp_vectors_install();
 
@@ -157,10 +163,11 @@ int main(void) {
     hwp_print(1, "stage 1 of 2: measuring");
     if (!flash_erase_chip()) hwp_print(2, "FlashRAM erase reported failure");
     rec_begin(1, id);
+    sink_open(1, hwp_sd, hwp_isviewer);
     run_groups(stage1_groups, sizeof stage1_groups / sizeof stage1_groups[0], 3);
     tlb_pattern();
     finish(22);
-    hwp_print(24, "STAGE 1 DONE. PRESS RESET.");
+    hwp_print(25, "STAGE 1 DONE. PRESS RESET.");
     *HWP_LOW_PRENMI = 0;
     *HWP_LOW_PRENMI_N = 0;
     *HWP_LOW_LASTCOUNT = 0;
@@ -171,12 +178,13 @@ int main(void) {
     hwp_print(1, "stage 2 of 2: state after RESET");
     if (!flash_erase_sector(HWP_STAGE2_BASE / 128)) hwp_print(2, "FlashRAM erase reported failure");
     rec_begin(2, id);
+    sink_open(2, hwp_sd, hwp_isviewer);
     run_groups(stage2_groups, sizeof stage2_groups / sizeof stage2_groups[0], 3);
     finish(22);
-    hwp_print(24, "ALL DONE. PRESS RESET, THEN POWER OFF.");
+    hwp_print(25, "ALL DONE. PRESS RESET, THEN POWER OFF.");
   } else {
     hwp_print(1, "both stages are recorded");
-    hwp_print(24, "ALL DONE. POWER OFF AND SEND THE SAVE.");
+    hwp_print(25, "ALL DONE. POWER OFF AND SEND THE SAVE.");
   }
   for (;;) {}
 }

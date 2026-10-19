@@ -35,13 +35,23 @@ extern hwp_boot_t hwp_boot;
 void rec_begin(int stage, uint64_t silicon_id);
 void rec_series(uint16_t id, uint8_t esize, uint32_t count, const void* data);
 void rec_series_packed(uint16_t id, uint8_t mode, uint32_t count, const uint8_t* data);
+void rec_series_full(uint16_t id, uint8_t esize, uint32_t count, const void* data); // full record only
 void rec_flush(void);             // program every complete page not yet programmed
+
+// ---- Full record (sink.c): SD card file or ISViewer stream ----
+const char* sink_open(int stage, bool sd, bool isviewer); // returns the SD path, or NULL
+bool sink_active(void);
+void sink_series(uint16_t id, uint8_t esize, uint8_t flags, uint32_t count, const void* data,
+                 uint32_t data_len);
+bool sink_close(uint32_t status, uint64_t silicon);
+uint32_t sink_bytes(void);
 bool rec_finish(uint32_t status); // program the tail and the header; true if it reads back intact
 bool rec_program_errors(void);    // some erase/program reported failure in its status bits
 uint32_t rec_bytes(void);
 uint32_t rec_crc(void);
 uint32_t rec_series_count(void);
 uint32_t rec_room(void);
+uint64_t rec_silicon(void);
 const uint8_t* rec_image(void); // the area as programmed: header (after rec_finish) and series
 uint32_t crc32_update(uint32_t crc, const void* data, uint32_t len);
 
