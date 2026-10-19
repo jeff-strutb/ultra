@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <random>
 
+#include "core/savestate.hpp"
 #include "io/cic.hpp"
 #include "machine.hpp"
 
@@ -46,14 +47,85 @@ TEST_CASE("machine: a loaded save state continues exactly like the original") {
   CHECK(b.save_state() == end_a);
 }
 
-TEST_CASE("machine: a save state from a different layout is rejected") {
+TEST_CASE("machine: a failed load leaves the machine exactly as it was") {
+  // ADR 0003: loading is all or nothing. Each bad state fails at a different depth: the
+  // header, half way through (RDRAM loaded, the CPU not), and the very end.
+  // The bad states come from a later point, so a partial load would change the machine.
   auto a = boot(kRom, 0.05);
-  std::vector<u8> state = a->save_state();
-  state[0] ^= 0xFF;  // magic
-  CHECK_THROWS(a->load_state(state));
-  std::vector<u8> truncated(a->save_state());
+  auto b = boot(kRom, 0.05);
+  const std::vector<u8> good = a->save_state();
+  const std::vector<u8> later = boot(kRom, 0.08)->save_state();
+  REQUIRE(later.size() == good.size());
+  REQUIRE(later != good);
+  std::vector<u8> bad_magic = later;
+  bad_magic[0] ^= 0xFF;
+  std::vector<u8> truncated = later;
   truncated.resize(truncated.size() / 2);
-  CHECK_THROWS(a->load_state(truncated));
+  std::vector<u8> trailing = later;
+  trailing.push_back(0);
+  for (const auto* bad : {&bad_magic, &truncated, &trailing}) {
+    CHECK_THROWS(a->load_state(*bad));
+    CHECK(a->save_state() == good);
+  }
+  // And it still runs exactly like an untouched machine.
+  a->run_until(seconds(0.1));
+  b->run_until(seconds(0.1));
+  CHECK(a->save_state() == b->save_state());
+}
+
+TEST_CASE("machine: a save state from another ROM, CIC or TV standard is rejected") {
+  auto a = boot(kRom, 0.05);
+  const std::vector<u8> state = a->save_state();
+  std::string err;
+  auto rom_bytes = [&] {
+    auto cart = Cartridge::load(ultra::test::rom_path(kRom), &err);
+    REQUIRE(cart);
+    return std::vector<u8>(cart->rom().begin(), cart->rom().end());
+  };
+  auto rejects = [&](std::vector<u8> rom, SystemConfig cfg) {
+    System other(cfg, Cartridge::from_bytes(std::move(rom)));
+    other.power_on();
+    const std::vector<u8> before = other.save_state();
+    CHECK_THROWS(other.load_state(state));
+    CHECK(other.save_state() == before);
+  };
+  std::vector<u8> changed = rom_bytes();
+  changed.back() ^= 1;  // past IPL3: same CIC and region, different ROM
+  rejects(changed, SystemConfig{});
+  SystemConfig pal;
+  pal.tv = VideoStandard::Pal;
+  pal.cic = a->cic();  // PAL alone would also change the detected CIC
+  rejects(rom_bytes(), pal);
+  SystemConfig cic;
+  cic.cic = a->cic() == CicType::Cic6105 ? CicType::Cic6102 : CicType::Cic6105;
+  rejects(rom_bytes(), cic);
+}
+
+TEST_CASE("save state: a bool or enum outside its range is rejected") {
+  auto make = [](u8 b, u8 e) {
+    SaveState s = SaveState::saver();
+    s.section("t", 1);
+    bool flag = true;
+    CicType cic = CicType::Cic6102;
+    s.value(flag);
+    s.enumeration(cic, CicType::Cic7106);
+    std::vector<u8> bytes = s.data();
+    bytes[bytes.size() - 2] = b;
+    bytes[bytes.size() - 1] = e;
+    return bytes;
+  };
+  auto load = [](const std::vector<u8>& bytes) {
+    SaveState s = SaveState::loader(bytes);
+    s.section("t", 1);
+    bool flag = false;
+    CicType cic = CicType::Cic6101;
+    s.value(flag);
+    s.enumeration(cic, CicType::Cic7106);
+    return std::pair{flag, cic};
+  };
+  CHECK(load(make(1, static_cast<u8>(CicType::Cic7106))) == std::pair{true, CicType::Cic7106});
+  CHECK_THROWS(load(make(2, 0)));
+  CHECK_THROWS(load(make(0, static_cast<u8>(CicType::Cic7106) + 1)));
 }
 
 TEST_CASE("machine: PI DMA copies cartridge ROM into RDRAM and raises the PI interrupt") {

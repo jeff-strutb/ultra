@@ -139,7 +139,7 @@ void Si::serialize(SaveState& s) {
   s.value(dram_addr_);
   s.value(pif_addr_);
   s.value(data_);
-  s.value(op_);
+  s.enumeration(op_, Op::Wr4);
   s.value(busy_until_);
   s.value(dma_error_);
   s.array(buf_);

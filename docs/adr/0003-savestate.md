@@ -14,17 +14,26 @@ different build must fail loudly instead of loading garbage.
   `void serialize(SaveState&)` and visits its fields in a fixed order. In save mode each visit
   appends bytes; in load mode it overwrites the field from the buffer. Saving and loading
   cannot drift apart because they are the same code.
-- **Format:** header (`"ULTR"` magic as a u32, format version 1), then one section per module.
+- **Format:** header (`"ULTR"` magic as a u32, format version 2), then one section per module.
   A section starts with the FNV-1a hash of its name and a module version; on load both must
   match, otherwise loading throws. Values are raw host-endian bytes of trivially copyable
   fields; pointers cannot be serialized (enforced by a `requires` clause).
-- **Order:** `System::serialize` visits scheduler, RDRAM (contents and device registers),
+- **Identity:** the first section (`system`) records the FNV-1a 64 hash of the cartridge ROM,
+  the CIC and the TV standard. A load into a machine that differs in any of them throws.
+- **Checked fields:** `bool` is stored as one byte that must be 0 or 1, and enums go through
+  `enumeration(v, last)`, which rejects values above `last`. A raw copy could produce a value
+  the type cannot hold.
+- **All or nothing:** `System::load_state` saves the machine first, and restores that copy if the
+  load throws at any point (bad header, identity, truncation, trailing data, a section mismatch,
+  an invalid field). A failed load leaves the machine exactly as it was.
+- **Order:** `System::serialize` visits identity, scheduler, RDRAM (contents and device registers),
   arbiter, RI, MI, PIF, SI, PI, SP, DP, VI, AI, cartridge (ISViewer state, not ROM), CPU
   (registers, COP0/COP1, TLB, caches, write buffer), interrupt pins.
 - **Derived state is recomputed on load**, never stored: the scheduler heap (ADR 0001), TLB
   compare masks, RDRAM address map.
 - The cartridge ROM and the PIF boot ROM are inputs, not state: loading requires a `System`
-  constructed with the same ROM and powered on.
+  constructed with the same ROM, CIC and TV standard and powered on, and the identity section
+  enforces it.
 
 ## Consequences
 
@@ -33,5 +42,6 @@ different build must fail loudly instead of loading garbage.
   0.6 s; the two final states must be byte-identical).
 - Bumping a module's section version is required when its layout changes; old states then fail
   with the section name in the error.
+- A load costs one extra save (RDRAM included) for the rollback copy.
 - States are host-endian and not portable between big- and little-endian hosts; acceptable
   while every supported host is little-endian.

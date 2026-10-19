@@ -83,6 +83,7 @@ class System {
   std::unique_ptr<Cartridge> cart_;
   CicType cic_;
   VideoStandard tv_;
+  u64 rom_hash_;  // FNV-1a over the cartridge ROM: a save state names the ROM it was made from
 
   TraceSink trace_;
   Scheduler sched_;

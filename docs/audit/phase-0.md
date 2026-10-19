@@ -429,3 +429,15 @@ proven it.
   window of any period and a VI-clock synchronizer were each fitted to the seven loop classes
   and rejected (ledger `cpu-timing-residual`). Closing it needs probes 1 and 6 on hardware. The
   2 % tolerance stays, with the exact variants ledgered as expected failures.
+- **2026-10-19, F6.** Save-state loading is checked and atomic (ADR 0003, format version 2):
+  - a `system` identity section (ROM hash, CIC, TV standard) rejects a state made by a
+    different machine;
+  - `bool` and enum fields are range-checked instead of copied raw (PIF CIC, SI op, CPU
+    load-target and write-buffer master);
+  - `System::load_state` restores a copy taken first if anything throws (trailing data was
+    already rejected).
+
+  `tests/unit/test_machine.cpp` checks that a failed load leaves the machine byte-identical
+  and still running like an untouched one, for a bad header, truncation and trailing data. It
+  also checks rejection of another ROM, CIC and TV standard, and of out-of-range bool and
+  enum bytes. Each check fails when its guard is removed.

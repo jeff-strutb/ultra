@@ -949,7 +949,7 @@ void Vr4300::serialize(SaveState& s) {
   s.value(cycles_);
   s.value(retired_);
   s.value(frozen_);
-  s.value(pending_load_kind_);
+  s.enumeration(pending_load_kind_, LoadTarget::Fpr);
   s.value(pending_load_reg_);
   s.value(prev_dcache_store_);
   s.value(fpu_result_reg_);
@@ -959,7 +959,7 @@ void Vr4300::serialize(SaveState& s) {
   for (PendingWrite& w : wb_) {
     s.value(w.paddr);
     s.value(w.size);
-    s.value(w.master);
+    s.enumeration(w.master, Master::Pif);
     s.value(w.ready);
     s.array(w.data);
   }

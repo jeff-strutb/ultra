@@ -156,7 +156,7 @@ void Pif::serialize(SaveState& s) {
   s.section("pif", 1);
   s.array(ram_);
   s.array(rom_);
-  s.value(cic_);
+  s.enumeration(cic_, CicType::Cic7106);
   s.value(rom_locked_);
   s.value(boot_terminated_);
   s.value(halt_cpu_);
