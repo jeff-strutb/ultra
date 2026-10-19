@@ -149,6 +149,7 @@ void grp_rdram_contend(void*);
 void grp_vi_hsync(void*);
 void grp_cpu_func(void*);
 void grp_rdp_render(void*);
+void grp_rsp_func(void*);
 
 extern int hwp_stage;
 extern uint32_t hwp_memsize;
