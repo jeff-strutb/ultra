@@ -16,6 +16,12 @@ using CpuCycle = u64;
 
 inline constexpr Tick kTickNever = ~Tick{0};
 
+// Time to accept a CPU write that the device takes without a bus transaction of its own: a word
+// latched by the PI or SI for a background write, a write the PI or SI ignores while busy, a
+// write above 0x8000_0000, and an MI repeat-mode write of no bytes. Guess: one MClock, the
+// shortest SysAD cycle (ledger "write-accept").
+inline constexpr Tick kWriteAcceptTicks = 1;
+
 // RCLK = 250 MHz, MClock = RCLK / 4 = 62.5 MHz.
 // Source: n64brew "Clock Timing", section "Crystal 2 (X2)", table of derived clocks.
 inline constexpr u64 kRdramClockHz = 250'000'000;

@@ -50,7 +50,8 @@ enum : u32 { kI = 1, kU = 2, kO = 4, kZ = 8, kV = 16, kE = 32 };
 
 // FCR31 write mask: FS, C, cause, enables, flags, RM. Source: n64-systemtest CFC1CTC1_31.
 constexpr u32 kFcsrWriteMask = 0x0183'FFFF;
-// FCR0 as read on hardware. Source: n64-systemtest CFC1CTC1_0 ("CFC1 0 returns 0xA00").
+// FCR0 as read on hardware. Source: n64-systemtest CFC1CTC1_0 ("CFC1 0 returns 0xA00"). The
+// manual (7.2.5) and n64brew "VR4300" give implementation 0x0B: ledger "fcr0-value".
 constexpr u32 kFcr0Value = 0x0000'0A00;
 
 constexpr u32 kDefaultNaN32 = 0x7FBF'FFFF;

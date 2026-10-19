@@ -22,7 +22,8 @@ namespace {
 // for the RCP. Measured: ledger "rcp-reg-read".
 constexpr Tick kRcpRegReadTicks = 10;
 // MI registers answer faster: n64brew "Memory map" gives "5-6 PClock cycles" for standard
-// registers and "about 2" for MI, i.e. MI is about 3 ticks quicker. Guess: ledger "mi-reg-read".
+// registers and "about 2" for MI, a difference of 3-4 PClocks = 2.0-2.7 ticks, taken as 3.
+// Guess: ledger "mi-reg-read".
 constexpr Tick kMiRegReadTicks = kRcpRegReadTicks - 3;
 // Register writes: "5-6 PClock cycles (MI ... about 2)" = 4 / 2 ticks, rounded up.
 // Derived: n64brew "Memory map", Range 0x0400'0000 - 0x04FF'FFFF.
@@ -97,7 +98,7 @@ Tick Bus::cpu_write(Master m, u32 paddr, u32 size, const u8* data, Tick t) {
   } else if (paddr >= kPiBus1 && paddr < kPiBusEnd) {
     done = d_.pi->io_write(paddr, w, t);
   } else if (paddr >= kPiBusEnd) {
-    done = t + 1;  // writes to 0x8000_0000+ are ignored by the RCP
+    done = t + kWriteAcceptTicks;  // writes to 0x8000_0000+ are ignored by the RCP
   } else {
     done = kTickNever;
   }

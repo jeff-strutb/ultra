@@ -91,8 +91,6 @@ class Vr4300 {
   // ---- constants -------------------------------------------------------------------------
   // PRId as read on revision 2.2 retail units (n64brew "VR4300", Revision Identifiers).
   static constexpr u32 kPRId = 0x0000'0B22;
-  // FCR0: implementation 0x0B, revision 0x00 (n64brew "VR4300", Revision Identifiers).
-  static constexpr u32 kFcr0 = 0x0000'0B00;
 
  private:
   // ---- caches (VR4300 manual chapter 11) ---------------------------------------------------

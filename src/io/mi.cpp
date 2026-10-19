@@ -136,7 +136,7 @@ Tick Mi::cpu_write(Master m, u32 paddr, u32 size, const u8* bus, Tick t) {
     // Source: n64-systemtest src/tests/mi/repeat.rs (SB/SH/SW/SD at every start offset).
     const u32 a = paddr & 7;
     const u32 end = rc + 1;
-    if (end <= a) return t + 1;
+    if (end <= a) return t + kWriteAcceptTicks;
     const u32 len = (end + 7) & ~7u;
     u8 mask[128];
     for (u32 i = 0; i < len; ++i) {

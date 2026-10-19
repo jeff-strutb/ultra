@@ -116,6 +116,9 @@ struct EntryLo {
   using D = Bit<2, u64>;
   using C = Bits<3, 3, u64>;
   using PFN = Bits<6, 20, u64>;
+  // Bits 29:0 are writable: G..PFN and also bits 29:26, which manual Figure 5-10 shows as zero
+  // but which read back on hardware. Source: n64-systemtest tlb EntryLo0/1Masking(64); ledger
+  // "entrylo-write-mask".
   static constexpr u64 kWriteMask = 0x3FFFFFFF;
 };
 struct EntryHi {

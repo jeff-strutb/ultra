@@ -27,7 +27,7 @@ The model keeps CPU time in PClocks and converts exactly (3 PClocks = 2 ticks).
 | Register | Value | Source |
 |---|---|---|
 | PRId | 0x00000B22 | [n64brew] "VR4300", Revision Identifiers; [krom] COP0Register |
-| FCR0 | 0x00000A00 | [st] `cop1` CFC1CTC1_0 ("CFC1 0 returns 0xA00") |
+| FCR0 | 0x00000A00 | [st] `cop1` CFC1CTC1_0 ("CFC1 0 returns 0xA00"). The manual (7.2.5) and [n64brew] "VR4300" give 0x0B00; ledger `fcr0-value` |
 | Config after IPL1 | 0x7006E463 (`MTC0 0x0006E463` plus fixed bits) | [n64brew] "Initial Program Load" IPL1; [st] `startup` |
 | Status after IPL1 | 0x34000000 (CU1, CU0, FR) | [n64brew] "Initial Program Load" IPL1; [st] `startup` |
 
@@ -120,6 +120,9 @@ Stall amounts:
 - TLBWI/TLBWR store PageMask per bit pair (each pair takes its upper bit), EntryLo masked to
   PFN, C, D, V, G (0x03FFFFFF) ([st] `tlb` "PageMask after TLBWI/TLBR", "EntryLo0/1/Hi after
   TLBWI/TLBR"); G reads back in both EntryLo registers ([UM] 5.3.1).
+- The EntryLo0/1 registers themselves keep bits 29:0 (0x3FFFFFFF), including bits 29:26 that
+  [UM] Figure 5-10 shows as zero ([st] `tlb` "EntryLo0 (masking)", "EntryLo1 (masking)" and
+  the 64-bit variants; ledger `entrylo-write-mask`).
 - Random counts down from 31 to Wired once per retired instruction ([UM] 5.4.2). Writing Wired
   resets it to 31 as read by the second instruction after the MTC0; the first still reads the
   old sequence, wrapping at the old Wired ([st] `cop0` RandomDecrement, RandomMasking,

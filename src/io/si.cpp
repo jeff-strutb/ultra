@@ -110,13 +110,13 @@ Tick Si::io_read(u32 paddr, u32& out, Tick t) {
 Tick Si::io_write(u32 paddr, u32 value, Tick t) {
   // Asynchronous: the SI latches the word and releases the CPU. Writes during a pending
   // write are ignored (n64brew "Memory map", SI external bus).
-  if (busy(t)) return t + 1;
+  if (busy(t)) return t + kWriteAcceptTicks;
   pif_addr_ = paddr & 0x7FC;
   data_ = value;
   op_ = Op::Wr4;
   busy_until_ = t + k4bTicks;
   sched_.schedule(finish_ev_, busy_until_);
-  return t + 1;
+  return t + kWriteAcceptTicks;
 }
 
 void Si::finish(Tick t) {

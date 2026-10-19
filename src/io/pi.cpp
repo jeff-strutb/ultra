@@ -150,7 +150,7 @@ Tick Pi::io_read(u32 paddr, u32& out, Tick t) {
 Tick Pi::io_write(u32 paddr, u32 value, Tick t) {
   // Writes are latched and performed in the background; writes during a pending write are
   // ignored. The CPU is released immediately.
-  if (t < io_busy_until_) return t + 1;
+  if (t < io_busy_until_) return t + kWriteAcceptTicks;
   const u32 a = paddr & ~1u;
   if (cart_) {
     cart_->write16(a, static_cast<u16>(value >> 16));
@@ -159,7 +159,7 @@ Tick Pi::io_write(u32 paddr, u32 value, Tick t) {
   cart_addr_ = a + 4;
   io_latch_ = value;
   io_busy_until_ = t + bus_ticks(a, 4);
-  return t + 1;
+  return t + kWriteAcceptTicks;
 }
 
 void Pi::start_dma(bool to_rdram, Tick t) {

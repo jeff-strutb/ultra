@@ -441,3 +441,16 @@ proven it.
   and still running like an untouched one, for a bad header, truncation and trailing data. It
   also checks rejection of another ROM, CIC and TV standard, and of out-of-range bool and
   enum bytes. Each check fails when its guard is removed.
+- **2026-10-19, F7.** Every item now has a ledger row (49 parameters):
+  - `fcr0-value`: the unused `Vr4300::kFcr0` (0x0B00) is removed. 0xA00 stays, because
+    n64-systemtest fails with 0x0B00. The row records that the manual (7.2.5) and n64brew both
+    say 0x0B00.
+  - `entrylo-write-mask`: 0x3FFFFFFF is cited. n64-systemtest's four EntryLo masking tests
+    fail if bits 29:26 are cleared or bit 30 is kept. The row records the conflict with
+    Figure 5-10.
+  - `write-accept`: the 1-tick acceptance in PI, SI, MI and the bus is one named Guess,
+    `kWriteAcceptTicks`.
+  - `mi-reg-read`: the text now gives the 2.0-2.7 tick range and says 3 is a rounding choice.
+  - `cop0-cause-poweron`: now names the VIIntrDisabled reference showing Cause = 0.
+  - `arb-*`: seven rows cover the nine Derived arbiter constants, and the source comments name
+    them.
